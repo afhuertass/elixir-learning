@@ -80,6 +80,25 @@ defmodule GeoFi do
     data_man ++ data_women
   end
 
+  def plot_pop(year_val) do
+    data = GeoFi.get_population(year_val)
+
+    b =
+      Tucan.bar(
+        data,
+        "muni",
+        "pop",
+        color_by: "gender",
+        mode: :grouped,
+        orient: :horizontal
+      )
+      |> Tucan.set_size(400, 400)
+      |> Tucan.set_title("Population Finland per Municipalities - " <> year_val)
+      |> Tucan.Axes.set_xy_titles("Population", "Municipality")
+
+    b
+  end
+
   def get_grid_population() do
     :ok
   end
@@ -95,23 +114,27 @@ alias Tucan
 ```
 
 ```elixir
-text = Kino.Input.select("Select Year", en: "2013", fr: "2020")
+years = [
+  "2019",
+  "2020",
+  "2021",
+  "2022",
+  "2023"
+]
+
+year_select = Kino.Input.select("Select Year", Enum.map(years, fn x -> {x, x} end))
+
+frame = Kino.Frame.new()
+
+Kino.listen(year_select, fn event ->
+  %{value: val} = event
+  chart = GeoFi.plot_pop(val)
+  Kino.Frame.render(frame, chart)
+end)
+
+Kino.Layout.grid([year_select, frame])
 ```
 
 ```elixir
-text
-```
 
-```elixir
-Tucan.bar(
-  data,
-  "muni",
-  "pop",
-  color_by: "gender",
-  mode: :grouped,
-  orient: :horizontal
-)
-|> Tucan.set_size(400, 400)
-|> Tucan.set_title("Population Finland per Municipalities")
-|> Tucan.Axes.set_xy_titles("Population", "Municipality")
 ```
