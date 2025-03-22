@@ -10,7 +10,11 @@ Mix.install([
 ])
 ```
 
-## Section
+## Some module
+
+### Finland data exploration
+
+In this simple example I'm building a small app to retrieve statistics'data from the finnish open data. And then we just do fun things
 
 ```elixir
 defmodule WFServer do
@@ -42,21 +46,35 @@ defmodule GeoFi do
     ]
 
     resp = Req.get!(@url_base, params: params)
-    body = Map.get(resp, :body)
+    _body = Map.get(resp, :body)
   end
 
-  def get_zipcodes() do
+  def get_population(year) do
     params = [
       service: "WFS",
       version: "2.0.0",
       request: "getFeature",
-      typeName: "tilastointialueet:avi1000k_2014",
+      typeName: "vaestoalue:avi_vaki" <> year,
       outputFormat: "json"
     ]
 
     resp = Req.get!(@url_base, params: params)
     body = Map.get(resp, :body)
-    body
+
+    %{"features" => features} = body
+
+    data_man =
+      Enum.map(features, fn %{"properties" => %{"miehet" => man, "name" => name}} ->
+        [name, man]
+      end)
+
+    data_women =
+      Enum.map(
+        features,
+        fn %{"properties" => %{"naiset" => naiset, "name" => name}} -> [naiset, name] end
+      )
+
+    %{"men" => data_man, "women" => data_women}
   end
 
   def get_grid_population() do
@@ -66,5 +84,9 @@ end
 ```
 
 ```elixir
-GeoFi.get_zipcodes()
+GeoFi.get_population("2023")
+```
+
+```elixir
+val
 ```
