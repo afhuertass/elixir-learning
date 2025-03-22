@@ -1,0 +1,115 @@
+# OpenMeteoApi
+
+## Section
+
+```elixir
+Mix.install([
+  {:vega_lite, "~> 0.1.11"},
+  {:kino_vega_lite, "~> 0.1.8"},
+  {:req , "~> 0.5.0"}
+])
+```
+
+```elixir
+
+alias VegaLite, as: Vl
+```
+
+```elixir
+# 60.1699° N, 24.9384°  Helsinki
+params = %{
+  "latitude" => "60.1699",
+  "longitude" =>"24.9384",
+  "current" => "temperature_2m,wind_speed_10m"
+}
+```
+
+```elixir
+defmodule OpenMeteoAPI do
+  alias VegaLite, as: Vl
+  @url_meteo "https://api.open-meteo.com/v1/forecast"
+  @lat "60.1699"
+  @lon "24.9384"
+  def wind_speed_helsinki() do
+    resp =
+      Req.get!(@url_meteo,
+        params: %{
+          "latitude" => @lat,
+          "longitude" => @lon,
+          "current" => "wind_speed_10m"
+        }
+      )
+
+    body = OpenMeteoAPI.get_body(resp)
+    %{"current" => %{"wind_speed_10m" => wind_speed}} = body
+    wind_speed
+  end
+
+  def forecast_wind_speed() do
+    resp =
+      Req.get!(@url_meteo,
+        params: %{
+          "latitude" => @lat,
+          "longitude" => @lon,
+          "hourly" => "wind_speed_10m"
+        }
+      )
+
+    body = OpenMeteoAPI.get_body(resp)
+    %{"hourly" => %{"time" => times, "wind_speed_10m" => winds}} = body
+
+    # plot_forecast( times , winds)
+    plot_forecast(times, winds)
+  end
+
+  def plot_forecast(dates, values) do
+    parsed_dates = Enum.map(dates, &parse_naive_datetime/1)
+
+    data =
+      Enum.zip(parsed_dates, values)
+      |> Enum.map(fn {date, val} -> %{date: date, value: val} end)
+
+    v1 =
+      Vl.new(width: 400, height: 200, title: "Hourly wind")
+      |> Vl.data_from_values(data)
+      |> Vl.mark(:line)
+      |> Vl.encode_field(:x, "date", type: :temporal)
+      |> Vl.encode_field(:y, "value", type: :quantitative)
+
+    v1
+  end
+
+  def get_body(%{body: _meteo_data}) do
+    _meteo_data
+  end
+
+  def parse_naive_datetime(datetime_str) do
+    case NaiveDateTime.from_iso8601(datetime_str) do
+      {:ok, dt} ->
+        dt
+      {:error, :invalid_format} ->
+        # Try appending ":00" to fix missing seconds
+        {:ok, dt} = NaiveDateTime.from_iso8601(datetime_str <> ":00")
+        dt
+    end
+  end
+end
+```
+
+```elixir
+OpenMeteoAPI.forecast_wind_speed()
+```
+
+```elixir
+name = Kino.Input.text("Your name")
+
+```
+
+```elixir
+button = Kino.Control.button("Click me!")
+```
+
+```elixir
+Req.get!(url, params: params )
+    |> OpenMeteoAPI.handle_response_meteo 
+```

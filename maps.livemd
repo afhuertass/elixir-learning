@@ -1,0 +1,70 @@
+# Maps
+
+```elixir
+Mix.install([
+  {:vega_lite, "~> 0.1.11"},
+  {:kino_vega_lite, "~> 0.1.8"},
+  {:req, "~> 0.5.0"},
+  {:sweet_xml, "~> 0.7.5"},
+  {:floki, "~> 0.37.0"}
+])
+```
+
+## Section
+
+```elixir
+defmodule WFServer do
+  def api_req(url, params) do
+    Req.get!(url, params: params)
+  end
+end
+
+defmodule GeoFi do
+  # Module to access and plot map data from Finland geoserver
+  @url_base "http://geo.stat.fi/geoserver/wfs"
+  def check_api_access() do
+    # check
+    resp = Req.get!(@url_base)
+    _status = Map.get(resp, :status, "Unknown")
+
+    case resp do
+      %{status: 200} -> IO.puts("API is active")
+      _ -> IO.puts("API is not active :(")
+    end
+  end
+
+  def get_municipalities() do
+    params = [
+      service: "WFS",
+      version: "2.0.0",
+      request: "GetCapabilities",
+      outputFormat: "json"
+    ]
+
+    resp = Req.get!(@url_base, params: params)
+    body = Map.get(resp, :body)
+  end
+
+  def get_zipcodes() do
+    params = [
+      service: "WFS",
+      version: "2.0.0",
+      request: "getFeature",
+      typeName: "tilastointialueet:avi1000k_2014",
+      outputFormat: "json"
+    ]
+
+    resp = Req.get!(@url_base, params: params)
+    body = Map.get(resp, :body)
+    body
+  end
+
+  def get_grid_population() do
+    :ok
+  end
+end
+```
+
+```elixir
+GeoFi.get_zipcodes()
+```
