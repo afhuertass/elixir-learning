@@ -6,7 +6,8 @@ Mix.install([
   {:kino_vega_lite, "~> 0.1.8"},
   {:req, "~> 0.5.0"},
   {:sweet_xml, "~> 0.7.5"},
-  {:floki, "~> 0.37.0"}
+  {:floki, "~> 0.37.0"},
+  {:tucan, "~> 0.4.1"}
 ])
 ```
 
@@ -64,17 +65,19 @@ defmodule GeoFi do
     %{"features" => features} = body
 
     data_man =
-      Enum.map(features, fn %{"properties" => %{"miehet" => man, "name" => name}} ->
-        [name, man]
+      Enum.map(features, fn %{"properties" => %{"miehet" => man_pop, "name" => name}} ->
+        %{"gender" => "Male", "pop" => man_pop, "muni" => name}
       end)
 
     data_women =
       Enum.map(
         features,
-        fn %{"properties" => %{"naiset" => naiset, "name" => name}} -> [naiset, name] end
+        fn %{"properties" => %{"naiset" => naiset, "name" => name}} ->
+          %{"gender" => "Female", "pop" => naiset, "muni" => name}
+        end
       )
 
-    %{"men" => data_man, "women" => data_women}
+    data_man ++ data_women
   end
 
   def get_grid_population() do
@@ -84,9 +87,31 @@ end
 ```
 
 ```elixir
-GeoFi.get_population("2023")
+data = GeoFi.get_population("2023")
 ```
 
 ```elixir
-val
+alias Tucan
+```
+
+```elixir
+text = Kino.Input.select("Select Year", en: "2013", fr: "2020")
+```
+
+```elixir
+text
+```
+
+```elixir
+Tucan.bar(
+  data,
+  "muni",
+  "pop",
+  color_by: "gender",
+  mode: :grouped,
+  orient: :horizontal
+)
+|> Tucan.set_size(400, 400)
+|> Tucan.set_title("Population Finland per Municipalities")
+|> Tucan.Axes.set_xy_titles("Population", "Municipality")
 ```
