@@ -50,7 +50,7 @@ defmodule GeoFi do
     _body = Map.get(resp, :body)
   end
 
-  def get_population(year) do
+  def do_request(year) do
     params = [
       service: "WFS",
       version: "2.0.0",
@@ -61,6 +61,11 @@ defmodule GeoFi do
 
     resp = Req.get!(@url_base, params: params)
     body = Map.get(resp, :body)
+    body
+  end
+
+  def get_population(year) do
+    body = GeoFi.do_request(year)
 
     %{"features" => features} = body
 
@@ -97,6 +102,9 @@ defmodule GeoFi do
       |> Tucan.Axes.set_xy_titles("Population", "Municipality")
 
     b
+  end
+
+  def geo_plot(year) do
   end
 
   def get_grid_population() do
