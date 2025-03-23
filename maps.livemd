@@ -105,6 +105,8 @@ defmodule GeoFi do
   end
 
   def geo_plot(year) do
+    body = GeoFi.do_request(year)
+    body
   end
 
   def get_grid_population() do
@@ -114,7 +116,7 @@ end
 ```
 
 ```elixir
-data = GeoFi.get_population("2023")
+#data = GeoFi.get_population("2023")
 ```
 
 ```elixir
@@ -143,6 +145,77 @@ end)
 Kino.Layout.grid([year_select, frame])
 ```
 
+### Geo plots
+
+Let's try to geo plots using Vega
+
 ```elixir
+alias VegaLite, as: Vl
+
+# Initialize the specification, optionally with some top-level properties
+```
+
+```elixir
+
+Vl.new(width: 400, height: 400)
+|> Vl.data_from_values(iteration: 1..100, score: 1..100)
+# |> Vl.data_from_values([%{iteration: 1, score: 1}, ...])
+# |> Vl.data_from_url("...")
+
+# Pick a visual mark for the graphic
+|> Vl.mark(:line)
+|> Vl.encode_field(:x, "iteration", type: :quantitative)
+|> Vl.encode_field(:y, "score", type: :quantitative)
+
+```
+
+```elixir
+data = GeoFi.geo_plot("2020")
+
+%{"features" => feats} = data
+length(feats)
+# Vl.new(width: 400, height: 400)
+# |> Vl.data(data)
+data_to_map = %{"features" => feats , "format" => "json" }
+
+#Vl.new(width: 400, height: 400)
+#|> Vl.data_from_values(data_to_map, format: %{"property" => "features"})
+#|> Vl.mark(:geoshape)
+data
+```
+
+```elixir
+guy = Enum.at(feats, 5)
+
+
+base_map =
+  Vl.new(width: 400, height: 400)
+  |> Vl.data(  [%{"values" => guy }] )
+  |> Vl.projection(type: :equalEarth)
+  |> Vl.mark(:geoshape)
+  |> Vl.encode_field(:color, "properties.naiset", type: :quantitative)
+|> Vl.to_spec()
+```
+
+```elixir
+base_map =
+  Vl.new(width: 400, height: 400)
+  |> Vl.data_from_values(feats ,format: :json , type: :featureCollection)
+  |> Vl.projection(type: :equalEarth)
+  |> Vl.mark(:geoshape)
+  |> Vl.encode_field(:color, "properties.naiset", type: :quantitative)
+```
+
+```elixir
+vl =
+  VegaLite.new()
+  |> VegaLite.data( values: [
+      %{"x" => 1, "y" => 2},
+      %{"x" => 2, "y" => 3},
+      %{"x" => 3, "y" => 5},
+      %{"x" => 4, "y" => 7}
+  ] , format: %{"type" => "json" , "property" => "features" })
+|> VegaLite.mark(:point)
+|> VegaLite.to_spec()
 
 ```
