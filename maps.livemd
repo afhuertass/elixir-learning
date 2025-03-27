@@ -7,7 +7,8 @@ Mix.install([
   {:req, "~> 0.5.0"},
   {:sweet_xml, "~> 0.7.5"},
   {:floki, "~> 0.37.0"},
-  {:tucan, "~> 0.4.1"}
+  {:tucan, "~> 0.4.1"},
+  {:math, "~> 0.7.0"},
 ])
 ```
 
@@ -51,12 +52,14 @@ defmodule GeoFi do
   end
 
   def do_request(year) do
+    #tilastointialueet:kunta4500k
     params = [
       service: "WFS",
       version: "2.0.0",
       request: "getFeature",
       typeName: "vaestoalue:avi_vaki" <> year,
-      outputFormat: "json"
+      outputFormat: "json",
+      srsName: "EPSG:4326"
     ]
 
     resp = Req.get!(@url_base, params: params)
@@ -112,6 +115,11 @@ defmodule GeoFi do
   def get_grid_population() do
     :ok
   end
+
+  def convert_coordinates( lat, lon) do 
+    
+    {}
+  end
 end
 ```
 
@@ -150,23 +158,124 @@ Kino.Layout.grid([year_select, frame])
 Let's try to geo plots using Vega
 
 ```elixir
-alias VegaLite, as: Vl
+# Some modules to get the features
+defmodule GeoProjection do
+  # constants
 
-# Initialize the specification, optionally with some top-level properties
+  def fin2coord(input_e, input_n) do
+    # Flattening of the ellipsoid
+    f = 1 / 298.257222101
+    # Semi-major axis
+    a = 6_378_137
+    # Central meridian (rad), 27 degrees
+    lambda_nolla = 0.471238898
+    # Scale factor
+    k_nolla = 0.9996
+    # Easting coordinate
+    e_nolla = 500_000
+
+    # Computation
+    n = f / (2 - f)
+    a1 = a / (1 + n) * (1 + n ** 2 / 4 + n ** 4 / 64)
+    e_squared = 2 * f - f ** 2
+
+    h1 = 1 / 2 * n - 2 / 3 * n ** 2 + 37 / 96 * n ** 3 - 1 / 360 * n ** 4
+    h2 = 1 / 48 * n ** 2 + 1 / 15 * n ** 3 - 437 / 1440 * n ** 4
+    h3 = 17 / 480 * n ** 3 - 37 / 840 * n ** 4
+    h4 = 4397 / 161_280 * n ** 4
+
+    zeeta = input_n / (a1 * k_nolla)
+    eeta = (input_e - e_nolla) / (a1 * k_nolla)
+
+    zeeta1_pilkku = h1 * Math.sin(2 * zeeta) * Math.cosh(2 * eeta)
+    zeeta2_pilkku = h2 * Math.sin(4 * zeeta) * Math.cosh(4 * eeta)
+    zeeta3_pilkku = h3 * Math.sin(6 * zeeta) * Math.cosh(6 * eeta)
+    zeeta4_pilkku = h4 * Math.sin(8 * zeeta) * Math.cosh(8 * eeta)
+
+    eeta1_pilkku = h1 * Math.cos(2 * zeeta) * Math.sinh(2 * eeta)
+    eeta2_pilkku = h2 * Math.cos(4 * zeeta) * Math.sinh(4 * eeta)
+    eeta3_pilkku = h3 * Math.cos(6 * zeeta) * Math.sinh(6 * eeta)
+    eeta4_pilkku = h4 * Math.cos(8 * zeeta) * Math.sinh(8 * eeta)
+
+    zeeta_pilkku = zeeta - (zeeta1_pilkku + zeeta2_pilkku + zeeta3_pilkku + zeeta4_pilkku)
+    eeta_pilkku = eeta - (eeta1_pilkku + eeta2_pilkku + eeta3_pilkku + eeta4_pilkku)
+
+    beeta = Math.asin(1 / Math.cosh(eeta_pilkku) * Math.sin(zeeta_pilkku))
+    l = Math.asin(Math.tanh(eeta_pilkku) / Math.cos(beeta))
+
+    qq = Math.asinh(Math.tan(beeta))
+    q_pilkku = qq + Math.sqrt(e_squared) * Math.atanh(Math.sqrt(e_squared) * Math.tanh(qq))
+
+    q_pilkku = GeoProjection.update_q(q_pilkku, qq, e_squared)
+
+    lat = Math.rad2deg(Math.atan(Math.sinh(q_pilkku)))
+    lng = Math.rad2deg(lambda_nolla + l)
+    [lng, lat]
+  end
+
+  @spec update_q(number, number, number) :: {number, number, number}
+  def update_q(q_pilkku, qq, e_squared) do
+    Enum.reduce(1..4, q_pilkku, fn _, acc ->
+      # * Math.atanh(Math.sqrt(e_squared) * Math.tanh(acc))
+      qq + Math.sqrt(e_squared) * Math.atanh(Math.sqrt(e_squared) * Math.tanh(acc))
+    end)
+  end
+end
+
+defmodule ParsePairs do
+  def parse(nested_list, custom_func) do
+    update_in(nested_list, [Access.all()], fn item ->
+      case item do
+        # Apply function to pairs
+        [x, y] when is_number(x) and is_number(y) -> custom_func.(x, y)
+        # Recurse deeper
+        sublist when is_list(sublist) -> parse(sublist, custom_func)
+        # Keep other elements unchanged
+        other -> other
+      end
+    end)
+  end
+
+  def c_fun(x, y) do
+    [x + 1, y + 2]
+  end
+end
+
+defmodule ParsePairs2 do
+  def apply_function(nested_list) do
+    Enum.map(nested_list, fn
+      [x, y] when is_number(x) and is_number(y) -> GeoProjection.fin2coord(y,x)
+      sublist when is_list(sublist) -> apply_function(sublist)
+      other -> other
+    end)
+  end
+
+  def swap(nested_list) do
+    Enum.map(nested_list, fn
+      [x, y] when is_number(x) and is_number(y) -> [y,x]
+      sublist when is_list(sublist) -> swap(sublist)
+      other -> other
+    end)
+  end
+
+  def c_fun(x, y) do
+    [x, y]
+  end
+end
+
+aa = [
+  [2, 5.0, [1, 1]],
+  [[13.0, 17.0], [25.0, 0.0], [0, 0]],
+  [2, 2]
+]
+
+ParsePairs2.apply_function(aa ) 
 ```
 
 ```elixir
+alias VegaLite, as: Vl
 
-Vl.new(width: 400, height: 400)
-|> Vl.data_from_values(iteration: 1..100, score: 1..100)
-# |> Vl.data_from_values([%{iteration: 1, score: 1}, ...])
-# |> Vl.data_from_url("...")
-
-# Pick a visual mark for the graphic
-|> Vl.mark(:line)
-|> Vl.encode_field(:x, "iteration", type: :quantitative)
-|> Vl.encode_field(:y, "score", type: :quantitative)
-
+# Initialize the specification, optionally with some top-level properties
 ```
 
 ```elixir
@@ -186,36 +295,261 @@ data
 
 ```elixir
 guy = Enum.at(feats, 5)
+%{"geometry" => %{"coordinates" => coords}} = guy
+newguy = update_in(guy, ["geometry", "coordinates"], &ParsePairs2.apply_function/1)
 
+new_data =
+  update_in(data, ["features"], fn feat ->
+    Enum.map(
+      feat,
+      fn x -> update_in(x, ["geometry", "coordinates"], &ParsePairs2.apply_function/1) end
+    )
+  end)
 
-base_map =
-  Vl.new(width: 400, height: 400)
-  |> Vl.data(  [%{"values" => guy }] )
-  |> Vl.projection(type: :equalEarth)
-  |> Vl.mark(:geoshape)
-  |> Vl.encode_field(:color, "properties.naiset", type: :quantitative)
-|> Vl.to_spec()
+new_data
 ```
 
 ```elixir
-base_map =
-  Vl.new(width: 400, height: 400)
-  |> Vl.data_from_values(feats ,format: :json , type: :featureCollection)
-  |> Vl.projection(type: :equalEarth)
-  |> Vl.mark(:geoshape)
-  |> Vl.encode_field(:color, "properties.naiset", type: :quantitative)
+new_data2 =
+  update_in(new_data, ["features"], fn feat ->
+    Enum.map(
+      feat,
+      fn x -> update_in(x, ["geometry", "coordinates"], &ParsePairs2.swap/1) end
+    )
+  end)
+new_data2
+```
+
+```elixir
+data
+```
+
+```elixir
+vl =
+  VegaLite.new(
+    title: "Finland",
+    width: 500,
+    height: 500
+  )
+  |> VegaLite.data(values: new_data2, format: %{"type" => "json", "property" => "features"})
+  |> VegaLite.projection(type: :mercator)
+  |> VegaLite.mark(:geoshape)
+|>VegaLite.encode_field(:color , "properties.naiset" , type: :quantitative)
+
+
+#  |> VegaLite.mark(:geoshape)
+# |> VegaLite.encode_field(:color , "properties.naiset", type: :quantitative)
+```
+
+```elixir
+new_data2
+```
+
+```elixir
+defmodule MapEncoding do
+  def swapped_encoding do
+    %{
+      longitude: %{
+        field: "geometry.1",
+        type: "quantitative"
+      },
+      latitude: %{
+        field: "geometry.0",
+        type: "quantitative"
+      }
+    }
+  end
+
+  def standard_encoding do
+    %{
+      longitude: %{
+        field: "geometry.0",
+        type: "quantitative"
+      },
+      latitude: %{
+        field: "geometry.1",
+        type: "quantitative"
+      }
+    }
+  end
+end
+```
+
+```elixir
+vl =
+  VegaLite.new(
+    title: "Finland",
+    width: 500,
+    height: 500
+  )
+  |> VegaLite.data(values: data, format: %{"type" => "json", "property" => "features"})
+  |> VegaLite.mark(:geoshape)
+  |> VegaLite.projection(type: :mercator, rotate: [45, 0, 0  ], center: [1, 1 ,1 ])
+```
+
+```elixir
+Enum.map(1..4, fn x -> IO.puts(x) end)
+```
+
+```elixir
+geojson_map = %{
+  "type" => "FeatureCollection",
+  "features" => [
+    %{
+      "type" => "Feature",
+      "geometry" => %{
+        "type" => "Point",
+        "coordinates" => [102.0, 0.5]
+      },
+      "properties" => %{
+        "prop0" => "value0"
+      }
+    },
+    %{
+      "type" => "Feature",
+      "geometry" => %{
+        "type" => "LineString",
+        "coordinates" => [
+          [102.0, 0.0], 
+          [103.0, 1.0], 
+          [104.0, 0.0], 
+          [150.0, 1.0]
+        ]
+      },
+      "properties" => %{
+        "prop0" => "value0",
+        "prop1" => 0.0
+      }
+    },
+    %{
+      "type" => "Feature",
+      "geometry" => %{
+        "type" => "Polygon",
+        "coordinates" => [
+          [
+            [100.0, 0.0], 
+            [101.0, 0.0], 
+            [501.0, 2.0], 
+            [100.0, 1.0], 
+            [100.0, 0.0]
+          ]
+        ]
+      },
+      "properties" => %{
+        "prop0" => "value0",
+        "prop1" => %{"this" => "that"}
+      }
+    }
+  ]
+}
+
 ```
 
 ```elixir
 vl =
   VegaLite.new()
-  |> VegaLite.data( values: [
-      %{"x" => 1, "y" => 2},
-      %{"x" => 2, "y" => 3},
-      %{"x" => 3, "y" => 5},
-      %{"x" => 4, "y" => 7}
-  ] , format: %{"type" => "json" , "property" => "features" })
-|> VegaLite.mark(:point)
-|> VegaLite.to_spec()
+  |> VegaLite.data_from_url(
+    "https://raw.githubusercontent.com/mattijn/datasets/master/NL_outline_geo.json",
+    format: :json
+  )
+  |> VegaLite.projection(type: :mercator)
+  |> VegaLite.mark(:geoshape)
+```
+
+```elixir
+defmodule GeoProjection do
+  # constants
+
+  def fin2coord(input_n, input_e) do
+    # Flattening of the ellipsoid
+    f = 1 / 298.257222101
+    # Semi-major axis
+    a = 6_378_137
+    # Central meridian (rad), 27 degrees
+    lambda_nolla = 0.471238898
+    # Scale factor
+    k_nolla = 0.9996
+    # Easting coordinate
+    e_nolla = 500_000
+
+    # Computation
+    n = f / (2 - f)
+    a1 = a / (1 + n) * (1 + n ** 2 / 4 + n ** 4 / 64)
+    e_squared = 2 * f - f ** 2
+
+    h1 = 1 / 2 * n - 2 / 3 * n ** 2 + 37 / 96 * n ** 3 - 1 / 360 * n ** 4
+    h2 = 1 / 48 * n ** 2 + 1 / 15 * n ** 3 - 437 / 1440 * n ** 4
+    h3 = 17 / 480 * n ** 3 - 37 / 840 * n ** 4
+    h4 = 4397 / 161_280 * n ** 4
+
+    zeeta = input_n / (a1 * k_nolla)
+    eeta = (input_e - e_nolla) / (a1 * k_nolla)
+
+    zeeta1_pilkku = h1 * Math.sin(2 * zeeta) * Math.cosh(2 * eeta)
+    zeeta2_pilkku = h2 * Math.sin(4 * zeeta) * Math.cosh(4 * eeta)
+    zeeta3_pilkku = h3 * Math.sin(6 * zeeta) * Math.cosh(6 * eeta)
+    zeeta4_pilkku = h4 * Math.sin(8 * zeeta) * Math.cosh(8 * eeta)
+
+    eeta1_pilkku = h1 * Math.cos(2 * zeeta) * Math.sinh(2 * eeta)
+    eeta2_pilkku = h2 * Math.cos(4 * zeeta) * Math.sinh(4 * eeta)
+    eeta3_pilkku = h3 * Math.cos(6 * zeeta) * Math.sinh(6 * eeta)
+    eeta4_pilkku = h4 * Math.cos(8 * zeeta) * Math.sinh(8 * eeta)
+
+    zeeta_pilkku = zeeta - (zeeta1_pilkku + zeeta2_pilkku + zeeta3_pilkku + zeeta4_pilkku)
+    eeta_pilkku = eeta - (eeta1_pilkku + eeta2_pilkku + eeta3_pilkku + eeta4_pilkku)
+
+    beeta = Math.asin(1 / Math.cosh(eeta_pilkku) * Math.sin(zeeta_pilkku))
+    l = Math.asin(Math.tanh(eeta_pilkku) / Math.cos(beeta))
+
+    qq = Math.asinh(Math.tan(beeta))
+    q_pilkku = qq + Math.sqrt(e_squared) * Math.atanh(Math.sqrt(e_squared) * Math.tanh(qq))
+
+    q_pilkku = GeoProjection.update_q(q_pilkku, qq, e_squared)
+
+    lat = Math.rad2deg(Math.atan(Math.sinh(q_pilkku)))
+    lng = Math.rad2deg(lambda_nolla + l)
+    {lat, lng}
+  end
+
+  @spec update_q(number, number, number) :: {number, number, number}
+  def update_q(q_pilkku, qq, e_squared) do
+    Enum.reduce(1..4, q_pilkku, fn _, acc ->
+      # * Math.atanh(Math.sqrt(e_squared) * Math.tanh(acc))
+      qq + Math.sqrt(e_squared) * Math.atanh(Math.sqrt(e_squared) * Math.tanh(acc))
+    end)
+  end
+end
+```
+
+```elixir
+qq = 1
+Enum.reduce(1..4, qq, fn(x, acc) -> x + acc end)
+```
+
+```elixir
+f = 1 / 298.257222101
+# Semi-major axis
+a = 6_378_137
+# Central meridian (rad), 27 degrees
+lambda_nolla = 0.471238898
+# Scale factor
+k_nolla = 0.9996
+# Easting coordinate
+e_nolla = 500_000
+
+# Computation
+n = f / (2 - f)
+a1 = a / (1 + n) * (1 + n ** 2 / 4 + n ** 4 / 64)
+e_squared = 2 * f - f ** 2
+e_squared
+```
+
+```elixir
+{nn, ee} = {7000000, 500000}  # Example Finnish Grid coordinates
+GeoProjection.fin2coord(nn, ee)
+
+```
+
+```elixir
 
 ```
