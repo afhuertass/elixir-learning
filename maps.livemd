@@ -210,7 +210,7 @@ defmodule GeoProjection do
 
     lat = Math.rad2deg(Math.atan(Math.sinh(q_pilkku)))
     lng = Math.rad2deg(lambda_nolla + l)
-    [lng, lat]
+    [lat, lng]
   end
 
   @spec update_q(number, number, number) :: {number, number, number}
@@ -317,32 +317,68 @@ new_data2 =
       fn x -> update_in(x, ["geometry", "coordinates"], &ParsePairs2.swap/1) end
     )
   end)
-new_data2
+
+
+
+swaped_data =
+  update_in(data, ["features"], fn feat ->
+    Enum.map(
+      feat,
+      fn x -> update_in(x, ["geometry", "coordinates"], &ParsePairs2.swap/1) end
+    )
+  end)
+
+swaped_data
 ```
 
 ```elixir
-data
+new_data2
 ```
 
 ```elixir
 vl =
   VegaLite.new(
     title: "Finland",
-    width: 500,
-    height: 500
+    width: 800,
+    height: 800
   )
-  |> VegaLite.data(values: new_data2, format: %{"type" => "json", "property" => "features"})
-  |> VegaLite.projection(type: :mercator)
-  |> VegaLite.mark(:geoshape)
-|>VegaLite.encode_field(:color , "properties.naiset" , type: :quantitative)
-
+  |> VegaLite.data(values: new_data, format: %{"type" => "json", "property" => "features"})
+  |> VegaLite.repeat(
+    [row: ["properties.naiset", "properties.miehet"]],
+    VegaLite.new()
+    |> VegaLite.projection(type: :mercator)
+    |> VegaLite.mark(:geoshape)
+    |> VegaLite.encode_repeat(:color, :row,
+      type: :quantitative,
+      legend: [title: "Population"],
+      title: [field: [repeat: :row], title: "Population of "]
+    )
+  )
 
 #  |> VegaLite.mark(:geoshape)
 # |> VegaLite.encode_field(:color , "properties.naiset", type: :quantitative)
 ```
 
 ```elixir
-new_data2
+
+```
+
+```elixir
+vl =
+  VegaLite.new(
+    title: "Finland",
+    width: 800,
+    height: 800
+  )
+  |> VegaLite.data(values: new_data, format: %{"type" => "json", "property" => "features"})
+  |> VegaLite.facet(
+    [row: field: ],
+    VegaLite.new()
+    |> VegaLite.projection(type: :mercator)
+    |> VegaLite.mark(:geoshape)
+    |> VegaLite.encode_repeat(:color, :row, type: :quantitative)
+  )
+|> VegaLite.to_spec()
 ```
 
 ```elixir
