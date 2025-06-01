@@ -1,0 +1,93 @@
+# RSS experiments
+
+```elixir
+Mix.install([
+  {:explorer, "~> 0.10.1"},
+  {:fast_rss, "~> 0.5.0"},
+  {:req, "~> 0.5.10"},
+  {:bumblebee, "~> 0.6.0"},
+  {:exla, ">= 0.0.0"},
+  {:nx, "~> 0.9.0"}
+])
+```
+
+## Section
+
+```elixir
+
+```
+
+```elixir
+alias Req
+```
+
+```elixir
+Nx.global_default_backend(EXLA.Backend)
+```
+
+```elixir
+model_id = "facebook/bart-large-mnli"
+{:ok, bart} = Bumblebee.load_model({:hf, model_id })
+```
+
+```elixir
+{:ok, tokenizer_info} = Bumblebee.load_tokenizer({:hf, model_id})
+```
+
+```elixir
+labels = ["mentions death of a famous", "does not mention death of famous"]
+zero_shot_serving = Bumblebee.Text.zero_shot_classification(bart, tokenizer_info, labels)
+
+output = Nx.Serving.run(zero_shot_serving, "Pope Francis died this morning")
+
+output = Nx.Serving.run(zero_shot_serving, "The president of Venezuela has passed away")
+
+output = Nx.Serving.run(zero_shot_serving, "Accident kill 100 passagers on board of train")
+
+```
+
+```elixir
+%{predictions: [%{label: "mentions death of a person", score: score_for_label1} | _]} = output
+```
+
+```elixir
+score_for_label1
+```
+
+```elixir
+url = "https://rss.nytimes.com/services/xml/rss/nyt/World.xml"
+resp = Req.get!(url)
+body = Map.get(resp, :body)
+```
+
+```elixir
+alias FastRSS
+{:ok, map_of_rss} = FastRSS.parse_rss(body)
+
+```
+
+```elixir
+Map.keys(map_of_rss)
+```
+
+```elixir
+map_of_rss["items"]
+
+Enum.at(map_of_rss["items"] , 0 )
+```
+
+```elixir
+Map.keys(Enum.at(map_of_rss["items"] , 0 ))
+```
+
+```elixir
+Enum.at(map_of_rss["items"] , 0 )["link"]
+
+Enum.map(
+  map_of_rss["items"] , fn x ->  
+    { String.contains?(x["description"] , "Ukraine" ), x["description"] }
+    
+  end
+) |> Enum.filter( fn  { dead, _descript } -> dead end ) 
+
+```

@@ -339,8 +339,8 @@ new_data2
 vl =
   VegaLite.new(
     title: "Finland",
-    width: 800,
-    height: 800
+    width: 900,
+    height: 900
   )
   |> VegaLite.data(values: new_data, format: %{"type" => "json", "property" => "features"})
   |> VegaLite.repeat(
@@ -364,21 +364,7 @@ vl =
 ```
 
 ```elixir
-vl =
-  VegaLite.new(
-    title: "Finland",
-    width: 800,
-    height: 800
-  )
-  |> VegaLite.data(values: new_data, format: %{"type" => "json", "property" => "features"})
-  |> VegaLite.facet(
-    [row: field: ],
-    VegaLite.new()
-    |> VegaLite.projection(type: :mercator)
-    |> VegaLite.mark(:geoshape)
-    |> VegaLite.encode_repeat(:color, :row, type: :quantitative)
-  )
-|> VegaLite.to_spec()
+
 ```
 
 ```elixir
@@ -493,97 +479,8 @@ vl =
 ```
 
 ```elixir
-defmodule GeoProjection do
-  # constants
-
-  def fin2coord(input_n, input_e) do
-    # Flattening of the ellipsoid
-    f = 1 / 298.257222101
-    # Semi-major axis
-    a = 6_378_137
-    # Central meridian (rad), 27 degrees
-    lambda_nolla = 0.471238898
-    # Scale factor
-    k_nolla = 0.9996
-    # Easting coordinate
-    e_nolla = 500_000
-
-    # Computation
-    n = f / (2 - f)
-    a1 = a / (1 + n) * (1 + n ** 2 / 4 + n ** 4 / 64)
-    e_squared = 2 * f - f ** 2
-
-    h1 = 1 / 2 * n - 2 / 3 * n ** 2 + 37 / 96 * n ** 3 - 1 / 360 * n ** 4
-    h2 = 1 / 48 * n ** 2 + 1 / 15 * n ** 3 - 437 / 1440 * n ** 4
-    h3 = 17 / 480 * n ** 3 - 37 / 840 * n ** 4
-    h4 = 4397 / 161_280 * n ** 4
-
-    zeeta = input_n / (a1 * k_nolla)
-    eeta = (input_e - e_nolla) / (a1 * k_nolla)
-
-    zeeta1_pilkku = h1 * Math.sin(2 * zeeta) * Math.cosh(2 * eeta)
-    zeeta2_pilkku = h2 * Math.sin(4 * zeeta) * Math.cosh(4 * eeta)
-    zeeta3_pilkku = h3 * Math.sin(6 * zeeta) * Math.cosh(6 * eeta)
-    zeeta4_pilkku = h4 * Math.sin(8 * zeeta) * Math.cosh(8 * eeta)
-
-    eeta1_pilkku = h1 * Math.cos(2 * zeeta) * Math.sinh(2 * eeta)
-    eeta2_pilkku = h2 * Math.cos(4 * zeeta) * Math.sinh(4 * eeta)
-    eeta3_pilkku = h3 * Math.cos(6 * zeeta) * Math.sinh(6 * eeta)
-    eeta4_pilkku = h4 * Math.cos(8 * zeeta) * Math.sinh(8 * eeta)
-
-    zeeta_pilkku = zeeta - (zeeta1_pilkku + zeeta2_pilkku + zeeta3_pilkku + zeeta4_pilkku)
-    eeta_pilkku = eeta - (eeta1_pilkku + eeta2_pilkku + eeta3_pilkku + eeta4_pilkku)
-
-    beeta = Math.asin(1 / Math.cosh(eeta_pilkku) * Math.sin(zeeta_pilkku))
-    l = Math.asin(Math.tanh(eeta_pilkku) / Math.cos(beeta))
-
-    qq = Math.asinh(Math.tan(beeta))
-    q_pilkku = qq + Math.sqrt(e_squared) * Math.atanh(Math.sqrt(e_squared) * Math.tanh(qq))
-
-    q_pilkku = GeoProjection.update_q(q_pilkku, qq, e_squared)
-
-    lat = Math.rad2deg(Math.atan(Math.sinh(q_pilkku)))
-    lng = Math.rad2deg(lambda_nolla + l)
-    {lat, lng}
-  end
-
-  @spec update_q(number, number, number) :: {number, number, number}
-  def update_q(q_pilkku, qq, e_squared) do
-    Enum.reduce(1..4, q_pilkku, fn _, acc ->
-      # * Math.atanh(Math.sqrt(e_squared) * Math.tanh(acc))
-      qq + Math.sqrt(e_squared) * Math.atanh(Math.sqrt(e_squared) * Math.tanh(acc))
-    end)
-  end
-end
-```
-
-```elixir
 qq = 1
 Enum.reduce(1..4, qq, fn(x, acc) -> x + acc end)
-```
-
-```elixir
-f = 1 / 298.257222101
-# Semi-major axis
-a = 6_378_137
-# Central meridian (rad), 27 degrees
-lambda_nolla = 0.471238898
-# Scale factor
-k_nolla = 0.9996
-# Easting coordinate
-e_nolla = 500_000
-
-# Computation
-n = f / (2 - f)
-a1 = a / (1 + n) * (1 + n ** 2 / 4 + n ** 4 / 64)
-e_squared = 2 * f - f ** 2
-e_squared
-```
-
-```elixir
-{nn, ee} = {7000000, 500000}  # Example Finnish Grid coordinates
-GeoProjection.fin2coord(nn, ee)
-
 ```
 
 ```elixir
