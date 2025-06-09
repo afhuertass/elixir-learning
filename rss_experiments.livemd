@@ -14,11 +14,52 @@ Mix.install([
 ## Section
 
 ```elixir
-
+alias Req
 ```
 
 ```elixir
-alias Req
+defmodule DeatrhDetector do
+  # A module to detect death of a famous person
+
+  # defining a type, for now is just a string maybe later it can be expanded
+  @type rss_feed() :: String.t()
+
+  @spec recent_deaths(list(rss_feed)) :: list(String.t())
+  def recent_deaths(_rss_feeds) do
+    # takes a list of 
+    []
+  end
+
+  @spec get_rss_body(String.t()) :: list(String.t())
+  def get_rss_body(url) do
+    # returns 
+    resp = Req.get!(url)
+
+    case resp do
+      %{status: 200, body: body} ->
+        {:ok, map_of_rss} = FastRSS.parse_rss(body)
+
+      %{status: _} ->
+        IO.puts("RSS feed unreachable")
+    end
+  end
+
+  @spec process_parsed_rss(map()) :: list(String.t())
+  def process_parsed_rss(rss_map) do
+    Map.get(rss_map, :items)
+    |> Enum.map(fn x ->
+      {String.contains?(x["description"], "Ukraine"), x["description"]}
+    end)
+    |> Enum.filter(fn {dead, _descript} -> dead end)
+    
+  end
+
+  
+end
+
+url = "https://rss.nytimes.com/services/xml/rss/nyt/World.xml"
+resp = Req.get!(url)
+body = Map.get(resp, :body)
 ```
 
 ```elixir
@@ -89,5 +130,9 @@ Enum.map(
     
   end
 ) |> Enum.filter( fn  { dead, _descript } -> dead end ) 
+
+```
+
+```elixir
 
 ```
