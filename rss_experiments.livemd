@@ -18,8 +18,32 @@ alias Req
 ```
 
 ```elixir
-defmodule DeatrhDetector do
-  # A module to detect death of a famous person
+defmodule Montage.ImageEmbedding do
+  @model_repo "openai/clip-vit-base-patch32"
+
+  def serving() do
+    {:ok, clip} = Bumblebee.load_model({:hf, @model_repo},
+      module: Bumblebee.Vision.ClipVision,
+      architecture: :for_embedding
+    )
+    {:ok, featurizer} = Bumblebee.load_featurizer({:hf, @model_repo})
+    Bumblebee.Vision.image_embedding(clip, featurizer,
+      defn_options: [compiler: EXLA],
+      embedding_processor: :l2_norm,
+      output_attribute: :embedding
+    )
+  end
+
+  def predict(image) do
+    Nx.Serving.batched_run(__MODULE__, image)
+  end
+end
+
+```
+
+```elixir
+defmodule DeathDetector do
+  # A module to detect death of a famous person from a list of RSS feeds
 
   # defining a type, for now is just a string maybe later it can be expanded
   @type rss_feed() :: String.t()
@@ -51,10 +75,38 @@ defmodule DeatrhDetector do
       {String.contains?(x["description"], "Ukraine"), x["description"]}
     end)
     |> Enum.filter(fn {dead, _descript} -> dead end)
-    
   end
 
-  
+  @spec detect_death(String, float()) :: bool()
+  def detect_death(description, threshold \\ 0.8) do
+    # using a small model
+    model_id = "facebook/bart-large-mnli"
+    {:ok, bart} = Bumblebee.load_model({:hf, model_id})
+    {:ok, tokenizer_info} = Bumblebee.load_tokenizer({:hf, model_id})
+    label_positive = "mentions death of a famous person"
+    label_negative = "does not mention death of person by proper name"
+    labels = [label_positive, label_negative]
+    serving = Bumblebee.Text.zero_shot_classification(bart, tokenizer_info, labels)
+    output = Nx.Serving.run(serving, description)
+    IO.inspect(output)
+
+    %{
+      predictions: preds
+      # %{label: "does not mention death of person by proper name", score: score},
+      # %{label: "mentions death of a famous person", score: _}
+    } = output
+
+    score =
+      preds
+      |> Enum.find(fn x -> Map.get(x, :label) == label_positive end)
+      |> Map.get(:score)
+
+    if score >= threshold do
+      true
+    else
+      false
+    end
+  end
 end
 
 url = "https://rss.nytimes.com/services/xml/rss/nyt/World.xml"
@@ -64,6 +116,11 @@ body = Map.get(resp, :body)
 
 ```elixir
 Nx.global_default_backend(EXLA.Backend)
+DeathDetector.detect_death("Donald Trump launches a new war against the cats")
+```
+
+```elixir
+
 ```
 
 ```elixir
