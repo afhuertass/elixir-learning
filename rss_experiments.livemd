@@ -18,15 +18,22 @@ alias Req
 ```
 
 ```elixir
+Nx.global_default_backend(EXLA.Backend)
+```
+
+```elixir
 defmodule Montage.ImageEmbedding do
   @model_repo "openai/clip-vit-base-patch32"
 
   def serving() do
-    {:ok, clip} = Bumblebee.load_model({:hf, @model_repo},
-      module: Bumblebee.Vision.ClipVision,
-      architecture: :for_embedding
-    )
+    {:ok, clip} =
+      Bumblebee.load_model({:hf, @model_repo},
+        module: Bumblebee.Vision.ClipVision,
+        architecture: :for_embedding
+      )
+
     {:ok, featurizer} = Bumblebee.load_featurizer({:hf, @model_repo})
+
     Bumblebee.Vision.image_embedding(clip, featurizer,
       defn_options: [compiler: EXLA],
       embedding_processor: :l2_norm,
@@ -39,6 +46,32 @@ defmodule Montage.ImageEmbedding do
   end
 end
 
+defmodule BartModel do
+  @model_repo "facebook/bart-large-mnli"
+  @label_positive "mentions death of a famous person"
+  @label_negative "does not mention death of person by proper name"
+  def serving() do
+    {:ok, model} = Bumblebee.load_model({:hf, @model_repo})
+    {:ok, tokenizer_info} = Bumblebee.load_tokenizer({:hf, @model_repo})
+    labels = [@label_positive, @label_negative]
+    serving = Bumblebee.Text.zero_shot_classification(model, tokenizer_info, labels)
+    serving
+  end
+
+  @spec predict(String.t()) :: Map.t()
+  def predict(string) do
+    # Nx.Serving.batched_run(__MODULE__, string)
+    Nx.Serving.run(serving(), string)
+  end
+
+  def positive_label() do
+    @label_positive
+  end
+end
+```
+
+```elixir
+BartModel.predict("A cat perished searching for some food at home")
 ```
 
 ```elixir
@@ -61,7 +94,7 @@ defmodule DeathDetector do
 
     case resp do
       %{status: 200, body: body} ->
-        {:ok, map_of_rss} = FastRSS.parse_rss(body)
+        {:ok, _map_of_rss} = FastRSS.parse_rss(body)
 
       %{status: _} ->
         IO.puts("RSS feed unreachable")
@@ -80,25 +113,15 @@ defmodule DeathDetector do
   @spec detect_death(String, float()) :: bool()
   def detect_death(description, threshold \\ 0.8) do
     # using a small model
-    model_id = "facebook/bart-large-mnli"
-    {:ok, bart} = Bumblebee.load_model({:hf, model_id})
-    {:ok, tokenizer_info} = Bumblebee.load_tokenizer({:hf, model_id})
-    label_positive = "mentions death of a famous person"
-    label_negative = "does not mention death of person by proper name"
-    labels = [label_positive, label_negative]
-    serving = Bumblebee.Text.zero_shot_classification(bart, tokenizer_info, labels)
-    output = Nx.Serving.run(serving, description)
-    IO.inspect(output)
+    output = BartModel.predict(description)
 
     %{
       predictions: preds
-      # %{label: "does not mention death of person by proper name", score: score},
-      # %{label: "mentions death of a famous person", score: _}
     } = output
 
     score =
       preds
-      |> Enum.find(fn x -> Map.get(x, :label) == label_positive end)
+      |> Enum.find(fn x -> Map.get(x, :label) == BartModel.positive_label() end)
       |> Map.get(:score)
 
     if score >= threshold do
@@ -109,13 +132,12 @@ defmodule DeathDetector do
   end
 end
 
-url = "https://rss.nytimes.com/services/xml/rss/nyt/World.xml"
-resp = Req.get!(url)
-body = Map.get(resp, :body)
+# url = "https://rss.nytimes.com/services/xml/rss/nyt/World.xml"
+# resp = Req.get!(url)
+# body = Map.get(resp, :body)
 ```
 
 ```elixir
-Nx.global_default_backend(EXLA.Backend)
 DeathDetector.detect_death("Donald Trump launches a new war against the cats")
 ```
 
@@ -124,32 +146,7 @@ DeathDetector.detect_death("Donald Trump launches a new war against the cats")
 ```
 
 ```elixir
-model_id = "facebook/bart-large-mnli"
-{:ok, bart} = Bumblebee.load_model({:hf, model_id })
-```
 
-```elixir
-{:ok, tokenizer_info} = Bumblebee.load_tokenizer({:hf, model_id})
-```
-
-```elixir
-labels = ["mentions death of a famous", "does not mention death of famous"]
-zero_shot_serving = Bumblebee.Text.zero_shot_classification(bart, tokenizer_info, labels)
-
-output = Nx.Serving.run(zero_shot_serving, "Pope Francis died this morning")
-
-output = Nx.Serving.run(zero_shot_serving, "The president of Venezuela has passed away")
-
-output = Nx.Serving.run(zero_shot_serving, "Accident kill 100 passagers on board of train")
-
-```
-
-```elixir
-%{predictions: [%{label: "mentions death of a person", score: score_for_label1} | _]} = output
-```
-
-```elixir
-score_for_label1
 ```
 
 ```elixir
@@ -161,7 +158,6 @@ body = Map.get(resp, :body)
 ```elixir
 alias FastRSS
 {:ok, map_of_rss} = FastRSS.parse_rss(body)
-
 ```
 
 ```elixir
@@ -171,23 +167,23 @@ Map.keys(map_of_rss)
 ```elixir
 map_of_rss["items"]
 
-Enum.at(map_of_rss["items"] , 0 )
+Enum.at(map_of_rss["items"], 0)
 ```
 
 ```elixir
-Map.keys(Enum.at(map_of_rss["items"] , 0 ))
+Map.keys(Enum.at(map_of_rss["items"], 0))
 ```
 
 ```elixir
-Enum.at(map_of_rss["items"] , 0 )["link"]
+Enum.at(map_of_rss["items"], 0)["link"]
 
 Enum.map(
-  map_of_rss["items"] , fn x ->  
-    { String.contains?(x["description"] , "Ukraine" ), x["description"] }
-    
+  map_of_rss["items"],
+  fn x ->
+    {String.contains?(x["description"], "Ukraine"), x["description"]}
   end
-) |> Enum.filter( fn  { dead, _descript } -> dead end ) 
-
+)
+|> Enum.filter(fn {dead, _descript} -> dead end)
 ```
 
 ```elixir

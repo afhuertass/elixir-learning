@@ -1,0 +1,18 @@
+# Untitled notebook
+
+```elixir
+Mix.install([
+  {:nx, "~> 0.9.2"}
+])
+```
+
+## Section
+
+```elixir
+list = [0, 1, 2, 3]
+
+Enum.map(
+  list,
+  fn x -> x + 1 end
+)
+```
