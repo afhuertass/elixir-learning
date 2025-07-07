@@ -7,7 +7,8 @@ Mix.install([
   {:req, "~> 0.5.10"},
   {:bumblebee, "~> 0.6.0"},
   {:exla, ">= 0.0.0"},
-  {:nx, "~> 0.9.0"}
+  {:nx, "~> 0.9.0"},
+  {:kino, "~> 0.16.0"}
 ])
 ```
 
@@ -67,11 +68,19 @@ defmodule BartModel do
   def positive_label() do
     @label_positive
   end
+
+  def get_serving() do
+    serving()
+  end
 end
 ```
 
 ```elixir
 BartModel.predict("A cat perished searching for some food at home")
+```
+
+```elixir
+Kino.start_child({Nx.Serving, serving: BartModel.get_serving(), name: BartModelServing})
 ```
 
 ```elixir
@@ -130,6 +139,32 @@ defmodule DeathDetector do
       false
     end
   end
+
+  def process_prediction(model_output, threshold \\ 0.89) do
+    %{
+      predictions: preds
+    } = model_output
+
+    score =
+      preds
+      |> Enum.find(fn x -> Map.get(x, :label) == BartModel.positive_label() end)
+      |> Map.get(:score)
+
+    if score >= threshold do
+      true
+    else
+      false
+    end
+  end
+
+  @spec detect_deaths_batch(list) :: list()
+  def detect_deaths_batch(descriptions) do
+    all_preds = Nx.Serving.batched_run(BartModelServing, descriptions)
+
+    Enum.map(all_preds, fn x ->
+      process_prediction(x)
+    end)
+  end
 end
 
 # url = "https://rss.nytimes.com/services/xml/rss/nyt/World.xml"
@@ -142,11 +177,12 @@ DeathDetector.detect_death("Donald Trump launches a new war against the cats")
 ```
 
 ```elixir
+samples = [
+  "Donald Trump launches a new war against the cats",
+  "Nelson Mandela dies again"
+]
 
-```
-
-```elixir
-
+DeathDetector.detect_deaths_batch(samples)
 ```
 
 ```elixir
@@ -165,27 +201,51 @@ Map.keys(map_of_rss)
 ```
 
 ```elixir
-map_of_rss["items"]
+all_descriptions =
+  Enum.map(
+    map_of_rss["items"],
+    fn x ->
+      x["description"]
+    end
+  )
 
-Enum.at(map_of_rss["items"], 0)
+processed = DeathDetector.detect_deaths_batch(all_descriptions)
+```
+
+```elixir
+Enum.zip(processed, map_of_rss["items"])
+|> Enum.filter(fn {dead, _m} -> dead end)
+|> Enum.map(fn {_dead, rss_item} -> rss_item["title"] end)
 ```
 
 ```elixir
 Map.keys(Enum.at(map_of_rss["items"], 0))
+
+Enum.at(map_of_rss["items"], 0)["description"]
+
+r =
+  Enum.map(
+    map_of_rss["items"],
+    fn x ->
+      {DeathDetector.detect_death(x["description"]), x["description"]}
+    end
+  )
+  |> Enum.filter(fn {dead, _descript} -> dead end)
+```
+
+```elixir
+Enum.at(r, 0)
 ```
 
 ```elixir
 Enum.at(map_of_rss["items"], 0)["link"]
 
-Enum.map(
-  map_of_rss["items"],
-  fn x ->
-    {String.contains?(x["description"], "Ukraine"), x["description"]}
-  end
-)
-|> Enum.filter(fn {dead, _descript} -> dead end)
-```
-
-```elixir
-
+r =
+  Enum.map(
+    map_of_rss["items"],
+    fn x ->
+      {String.contains?(x["description"], "Trump"), x["description"]}
+    end
+  )
+  |> Enum.filter(fn {dead, _descript} -> dead end)
 ```
