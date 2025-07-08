@@ -1,0 +1,36 @@
+# ExploringExplorer
+
+```elixir
+Mix.install([
+  {:explorer, "~> 0.10.1"},
+  {:kino_explorer, "~> 0.1.24"},
+  {:req, "~> 0.5.14"},
+  {:tucan, "~> 0.5.0"},
+  {:kino_vega_lite, "~> 0.1.13"}
+])
+```
+
+## Section
+
+```elixir
+require Explorer.DataFrame, as: DF
+alias VegaLite, as: Vl
+```
+
+```elixir
+df = DF.from_csv!("/home/andresh/elixir/live/data/train.csv")
+```
+
+<!-- livebook:{"attrs":"eyJhc3NpZ25fdG8iOiJvdXRwdXQiLCJjb2xsZWN0IjpmYWxzZSwiZGF0YV9mcmFtZSI6ImRmIiwiZGF0YV9mcmFtZV9hbGlhcyI6IkVsaXhpci5ERiIsImlzX2RhdGFfZnJhbWUiOnRydWUsIm1pc3NpbmdfcmVxdWlyZSI6bnVsbCwib3BlcmF0aW9ucyI6W3siYWN0aXZlIjp0cnVlLCJjb2x1bW4iOiJFbWJhcmtlZCIsImRhdGFfb3B0aW9ucyI6eyJBZ2UiOiJmbG9hdCIsIkNhYmluIjoic3RyaW5nIiwiRW1iYXJrZWQiOiJzdHJpbmciLCJGYXJlIjoiZmxvYXQiLCJOYW1lIjoic3RyaW5nIiwiUGFyY2giOiJpbnRlZ2VyIiwiUGFzc2VuZ2VySWQiOiJpbnRlZ2VyIiwiUGNsYXNzIjoiaW50ZWdlciIsIlNleCI6InN0cmluZyIsIlNpYlNwIjoiaW50ZWdlciIsIlN1cnZpdmVkIjoiaW50ZWdlciIsIlRpY2tldCI6InN0cmluZyJ9LCJkYXRhbGlzdCI6WyJTIiwiQyIsIlEiLG51bGxdLCJmaWx0ZXIiOiJlcXVhbCIsIm1lc3NhZ2UiOm51bGwsIm9wZXJhdGlvbl90eXBlIjoiZmlsdGVycyIsInR5cGUiOiJzdHJpbmciLCJ2YWx1ZSI6bnVsbH1dfQ","chunks":null,"kind":"Elixir.KinoExplorer.DataTransformCell","livebook_object":"smart_cell"} -->
+
+```elixir
+output = df
+```
+
+```elixir
+output
+```
+
+```elixir
+Tucan.scatter(df, "Age", "Fare", color_by: "Sex") |> Tucan.set_size(500,500)
+```
