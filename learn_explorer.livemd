@@ -6,11 +6,15 @@ Mix.install([
   {:kino_explorer, "~> 0.1.24"},
   {:req, "~> 0.5.14"},
   {:tucan, "~> 0.5.0"},
-  {:kino_vega_lite, "~> 0.1.13"}
+  {:kino_vega_lite, "~> 0.1.13"},
+  {:kino_db, "~> 0.3.0"},
+  {:exqlite, "~> 0.23.0"}
 ])
 ```
 
 ## Section
+
+This notebook is for learning purposes. Using Elixir Explorer library and the famous titanic dataset to get familiar with things.
 
 ```elixir
 require Explorer.DataFrame, as: DF
@@ -18,19 +22,43 @@ alias VegaLite, as: Vl
 ```
 
 ```elixir
+# Load the data
 df = DF.from_csv!("/home/andresh/elixir/live/data/train.csv")
 ```
 
-<!-- livebook:{"attrs":"eyJhc3NpZ25fdG8iOiJvdXRwdXQiLCJjb2xsZWN0IjpmYWxzZSwiZGF0YV9mcmFtZSI6ImRmIiwiZGF0YV9mcmFtZV9hbGlhcyI6IkVsaXhpci5ERiIsImlzX2RhdGFfZnJhbWUiOnRydWUsIm1pc3NpbmdfcmVxdWlyZSI6bnVsbCwib3BlcmF0aW9ucyI6W3siYWN0aXZlIjp0cnVlLCJjb2x1bW4iOiJFbWJhcmtlZCIsImRhdGFfb3B0aW9ucyI6eyJBZ2UiOiJmbG9hdCIsIkNhYmluIjoic3RyaW5nIiwiRW1iYXJrZWQiOiJzdHJpbmciLCJGYXJlIjoiZmxvYXQiLCJOYW1lIjoic3RyaW5nIiwiUGFyY2giOiJpbnRlZ2VyIiwiUGFzc2VuZ2VySWQiOiJpbnRlZ2VyIiwiUGNsYXNzIjoiaW50ZWdlciIsIlNleCI6InN0cmluZyIsIlNpYlNwIjoiaW50ZWdlciIsIlN1cnZpdmVkIjoiaW50ZWdlciIsIlRpY2tldCI6InN0cmluZyJ9LCJkYXRhbGlzdCI6WyJTIiwiQyIsIlEiLG51bGxdLCJmaWx0ZXIiOiJlcXVhbCIsIm1lc3NhZ2UiOm51bGwsIm9wZXJhdGlvbl90eXBlIjoiZmlsdGVycyIsInR5cGUiOiJzdHJpbmciLCJ2YWx1ZSI6bnVsbH1dfQ","chunks":null,"kind":"Elixir.KinoExplorer.DataTransformCell","livebook_object":"smart_cell"} -->
+```elixir
+# Question one, how many people survived?
+```
+
+<!-- livebook:{"attrs":"eyJhc3NpZ25fdG8iOiJvdXRwdXQiLCJjb2xsZWN0IjpmYWxzZSwiZGF0YV9mcmFtZSI6ImRmIiwiZGF0YV9mcmFtZV9hbGlhcyI6IkVsaXhpci5ERiIsImlzX2RhdGFfZnJhbWUiOnRydWUsIm1pc3NpbmdfcmVxdWlyZSI6bnVsbCwib3BlcmF0aW9ucyI6W3siYWN0aXZlIjp0cnVlLCJjb2x1bW5zIjpbIlNleCJdLCJkYXRhX29wdGlvbnMiOnsiQWdlIjoiZmxvYXQiLCJDYWJpbiI6InN0cmluZyIsIkVtYmFya2VkIjoic3RyaW5nIiwiRmFyZSI6ImZsb2F0IiwiTmFtZSI6InN0cmluZyIsIlBhcmNoIjoiaW50ZWdlciIsIlBhc3NlbmdlcklkIjoiaW50ZWdlciIsIlBjbGFzcyI6ImludGVnZXIiLCJTZXgiOiJzdHJpbmciLCJTaWJTcCI6ImludGVnZXIiLCJTdXJ2aXZlZCI6ImludGVnZXIiLCJUaWNrZXQiOiJzdHJpbmcifSwib3BlcmF0aW9uX3R5cGUiOiJncm91cF9ieSJ9LHsiYWN0aXZlIjp0cnVlLCJjb2x1bW5zIjpbIlN1cnZpdmVkIl0sImRhdGFfb3B0aW9ucyI6eyJBZ2UiOiJmbG9hdCIsIkNhYmluIjoic3RyaW5nIiwiRW1iYXJrZWQiOiJzdHJpbmciLCJGYXJlIjoiZmxvYXQiLCJOYW1lIjoic3RyaW5nIiwiUGFyY2giOiJpbnRlZ2VyIiwiUGFzc2VuZ2VySWQiOiJpbnRlZ2VyIiwiUGNsYXNzIjoiaW50ZWdlciIsIlNleCI6InN0cmluZyIsIlNpYlNwIjoiaW50ZWdlciIsIlN1cnZpdmVkIjoiaW50ZWdlciIsIlRpY2tldCI6InN0cmluZyJ9LCJvcGVyYXRpb25fdHlwZSI6Imdyb3VwX2J5In0seyJhY3RpdmUiOnRydWUsImNvbHVtbnMiOlsiUGFzc2VuZ2VySWQiXSwiZGF0YV9vcHRpb25zIjp7IkFnZSI6ImZsb2F0IiwiQ2FiaW4iOiJzdHJpbmciLCJFbWJhcmtlZCI6InN0cmluZyIsIkZhcmUiOiJmbG9hdCIsIk5hbWUiOiJzdHJpbmciLCJQYXJjaCI6ImludGVnZXIiLCJQYXNzZW5nZXJJZCI6ImludGVnZXIiLCJQY2xhc3MiOiJpbnRlZ2VyIiwiU2V4Ijoic3RyaW5nIiwiU2liU3AiOiJpbnRlZ2VyIiwiU3Vydml2ZWQiOiJpbnRlZ2VyIiwiVGlja2V0Ijoic3RyaW5nIn0sIm9wZXJhdGlvbl90eXBlIjoic3VtbWFyaXNlIiwicXVlcnkiOiJjb3VudCJ9LHsiYWN0aXZlIjp0cnVlLCJkYXRhX29wdGlvbnMiOnsiUGFzc2VuZ2VySWRfY291bnQiOiJpbnRlZ2VyIiwiU2V4Ijoic3RyaW5nIiwiU3Vydml2ZWQiOiJpbnRlZ2VyIn0sImRpcmVjdGlvbiI6ImFzYyIsIm9wZXJhdGlvbl90eXBlIjoic29ydGluZyIsInNvcnRfYnkiOiJTZXgifV19","chunks":null,"kind":"Elixir.KinoExplorer.DataTransformCell","livebook_object":"smart_cell"} -->
 
 ```elixir
-output = df
+output =
+  df
+  |> DF.lazy()
+  |> DF.group_by(["Sex", "Survived"])
+  |> DF.summarise(PassengerId_count: count(col("PassengerId")))
+  |> DF.sort_by(asc: col("Sex"))
 ```
 
 ```elixir
-output
+output |> DF.rename( %{"PassengerId_count" => "count"} ) |> DF.collect()
+
+bar = Tucan.bar(output, "Survived", "PassengerId_count", color_by: "Sex")
+bar |> Tucan.set_size(500,500)
+bar
+
 ```
 
 ```elixir
-Tucan.scatter(df, "Age", "Fare", color_by: "Sex") |> Tucan.set_size(500,500)
+Tucan.scatter(df, "Age", "Fare", color_by: "Sex" , shape_by: "Embarked")
+|> Tucan.set_size(500,500)
+```
+
+```elixir
+
+```
+
+```elixir
+
 ```
