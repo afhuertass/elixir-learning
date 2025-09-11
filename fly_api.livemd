@@ -1,0 +1,32 @@
+# AeroAPI
+
+```elixir
+Mix.install([
+  {:req, "~> 0.5.15"},
+  {:kino_vega_lite, "~> 0.1.13"}
+])
+```
+
+## Section
+
+```elixir
+defmodule AeroAPI do 
+  @url "https://aeroapi.flightaware.com/aeroapi"
+  def fetch_departured( airport_code ) do
+
+    departures_url = @url <> "/airports/" <> airport_code <> "/flights/departures"
+    headers = %{
+      "x-apikey" => System.fetch_env!("LB_AERO")
+    }
+    Req.get!(departures_url, headers: headers)
+    
+  end
+  
+end
+```
+
+```elixir
+AeroAPI.fetch_departured("HEL")
+```
+
+<!-- livebook:{"offset":506,"stamp":{"token":"XCP.Qb-U5pBc4xylAAXQl95rJGzKwjQBJZbStGyct3Dt8S5rHHdPvdAEAQd_zD-YEXJC1UMW69MGuWpBhO-oKKTV-S8wp3n0zVHwjoZb2vFeAA","version":2}} -->

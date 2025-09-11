@@ -46,7 +46,17 @@ output |> DF.rename( %{"PassengerId_count" => "count"} ) |> DF.collect()
 
 bar = Tucan.bar(output, "Survived", "PassengerId_count", color_by: "Sex")
 bar |> Tucan.set_size(500,500)
-bar
+
+```
+
+```elixir
+output |> DF.rename( %{"PassengerId_count" => "count"} ) |> DF.collect()
+
+bar = Tucan.bar(output, "Sex", "PassengerId_count", color_by: "Survived")
+bar |> Tucan.set_size(500,500)
+```
+
+```elixir
 
 ```
 

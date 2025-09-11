@@ -8,7 +8,8 @@ Mix.install([
   {:bumblebee, "~> 0.6.0"},
   {:exla, ">= 0.0.0"},
   {:nx, "~> 0.9.0"},
-  {:kino, "~> 0.16.0"}
+  {:kino, "~> 0.16.0"},
+  {:kino_maplibre, "~> 0.1.12"}
 ])
 ```
 
@@ -179,7 +180,8 @@ DeathDetector.detect_death("Donald Trump launches a new war against the cats")
 ```elixir
 samples = [
   "Donald Trump launches a new war against the cats",
-  "Nelson Mandela dies again"
+  "Nelson Mandela dies again",
+  "Donal trump is assasinated by an assasin"
 ]
 
 DeathDetector.detect_deaths_batch(samples)
@@ -194,10 +196,6 @@ body = Map.get(resp, :body)
 ```elixir
 alias FastRSS
 {:ok, map_of_rss} = FastRSS.parse_rss(body)
-```
-
-```elixir
-Map.keys(map_of_rss)
 ```
 
 ```elixir
@@ -219,22 +217,27 @@ Enum.zip(processed, map_of_rss["items"])
 ```
 
 ```elixir
+maphel = MapLibre.new(style: :street, center: {24.9, 60.16}, zoom: 13)
+MapLibre.add_layer()
+```
+
+```elixir
+maphel.spec
+```
+
+```elixir
 Map.keys(Enum.at(map_of_rss["items"], 0))
 
 Enum.at(map_of_rss["items"], 0)["description"]
 
-r =
-  Enum.map(
-    map_of_rss["items"],
-    fn x ->
-      {DeathDetector.detect_death(x["description"]), x["description"]}
-    end
-  )
-  |> Enum.filter(fn {dead, _descript} -> dead end)
-```
-
-```elixir
-Enum.at(r, 0)
+# r =
+#   Enum.map(
+#     map_of_rss["items"],
+#     fn x ->
+#       {DeathDetector.detect_death(x["description"]), x["description"]}
+#     end
+#   )
+#   |> Enum.filter(fn {dead, _descript} -> dead end)
 ```
 
 ```elixir
