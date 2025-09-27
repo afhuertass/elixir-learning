@@ -1,24 +1,190 @@
-# Chap 2
+# Advanced Functional Programming
 
 ## Section
 
 This notebook contains the code and exercises I type for the book https://pragprog.com/titles/jkelixir/advanced-functional-programming-with-elixir/
 
-```elixir
+<!-- livebook:{"break_markdown":true} -->
 
+### Define protocols
+
+```elixir
 defprotocol Fun.Eq do
   @fallback_to_any True
 
-  def eq?( a , b )
+  def eq?(a, b)
 
-  def not_eq?(a,b)
-  
+  def not_eq?(a, b)
 end
 
 defimpl Fun.Eq, for: Any do
-  def eq?(a,b), do: a == b
-  def not_eq?(a,b), do: a != b
+  def eq?(a, b), do: a == b
+  def not_eq?(a, b), do: a != b
+end
+
+
+defprotocol Fun.Ord do
+    @fallback_to_any true
     
+    def lt?(a, b)
+    def le?(a, b)
+    def gt?(a, b)
+    def ge?(a, b)
+end
+
+
+
+
+```
+
+```elixir
+defmodule Fun.Utils do
+  alias Fun.Eq
+
+  def contramap(f, eq \\ Eq) do
+    eq = to_eq_map(eq)
+
+    %{
+      eq?: fn a, b -> eq.eq?.(f.(a), f.(b)) end,
+      not_eq?: fn a, b -> eq.not_eq?.(f.(a), f.(b)) end
+    }
+  end
+
+  def to_eq_map(%{eq?: f1, not_eq?: f2} = input) when is_function(f1, 2) and is_function(f2, 2) do
+    input
+  end
+
+  def to_eq_map(module) when is_atom(module) do
+    %{
+      eq?: &module.eq?/2,
+      not_eq?: &module.not_eq?/2
+    }
+  end
+
+  def eq(a, b, eq \\ Eq) do
+    eq = to_eq_map(eq)
+    eq.eq?.(a, b)
+  end
+end
+
+defmodule Fun.Utils.Ord do
+  alias Fun.Ord
+
+  def contramap(f, ord \\ Ord) do
+    ord_map = Fun.Utils.Ord.to_ord_map(ord)
+
+    %{
+      lt?: fn a, b -> ord_map.lt?.(f.(a), f.(b)) end,
+      le?: fn a, b -> ord_map.le?.(f.(a), f.(b)) end,
+      gt?: fn a, b -> ord_map.gt?.(f.(a), f.(b)) end,
+      ge?: fn a, b -> ord_map.ge?.(f.(a), f.(b)) end
+    }
+  end
+
+  def to_ord_map(%{lt: f1, le: f2, gt: f3, ge: f4} = input)
+      when is_function(f1) and is_function(f2) and is_function(f3) and is_function(f4) do
+    input
+  end
+
+  def to_ord_map(module) when is_atom(module) do
+    %{
+      lt?: &module.lt?/2,
+      le?: &module.le?/2,
+      gt?: &module.gt?/2,
+      ge?: &module.gt?/2
+    }
+  end
+
+  def compare(a, b, ord \\ Ord) do
+    ord = Fun.Utils.Ord.to_ord_map(ord)
+
+    cond do
+      ord.lt?.(a, b) -> :lt
+      ord.gt?.(a, b) -> :gt
+      true -> :eq
+    end
+  end
+
+  def comparator(ord_module) do
+    fn a, b -> Fun.Utils.Ord.compare(a, b, ord_module) != :gt end
+  end
+
+  def to_eq(ord \\ Fun.Ord) do
+    %{
+      eq?: fn a, b -> Fun.Utils.Ord.compare(a, b, ord) == :eq end,
+      not_eq?: fn a, b -> Fun.Utils.Ord.compare(a, b, ord) != :eq end
+    }
+  end
+
+  def reverse(ord \\ Fun.Ord) do
+    ord_map = Fun.Utils.Ord.contramap(ord)
+
+    %{
+      lt?: ord.gt?,
+      le?: ord.ge?,
+      gt?: ord.lt?,
+      ge?: ord.le?
+    }
+  end
+end
+```
+
+### List Utility modules
+
+```elixir
+defmodule Fun.List do
+  # module for list tasks
+  alias Fun.Utils
+
+  def unique(list, eq \\ Fun.Eq) when is_list(list) do
+    list
+    |> Enum.reduce([], fn item, acc ->
+      if Enum.any?(acc, &Fun.Utils.eq(item, &1, eq)), do: acc, else: [item | acc]
+    end)
+    |> :lists.reverse()
+  end
+
+  def union(l1, l2) when is_list(l2) and is_list(l2) do
+    (l1 ++ l2) |> Fun.List.unique()
+  end
+
+  def intersection(l1, l2, eq \\ Fun.Eq) when is_list(l1) and is_list(l2) do
+    l1
+    |> Enum.filter(fn item ->
+      Enum.any?(l2, &Fun.Utils.eq(item, &1, eq))
+    end)
+    |> Fun.List.unique(eq)
+  end
+
+  def difference(l1, l2, eq \\ Fun.Eq) when is_list(l1) and is_list(l2) do
+    l1
+    |> Enum.reject(fn item ->
+      Enum.any?(l2, &Utils.eq(item, &1, eq))
+    end)
+    |> Fun.List.unique()
+  end
+
+  def simetric_difference(l1, l2, eq \\ Fun.Eq) when is_list(l1) and is_list(l2) do
+    (Fun.List.difference(l1, l2, eq) ++ Fun.List.difference(l2, l1, eq)) |> Fun.List.unique()
+  end
+
+  def subset?(small, large, eq \\ Fun.Eq) when is_list(small) and is_list(large) do
+    Enum.all?(small, fn item ->
+      Enum.any?(large, &Utils.eq(item, &1, eq))
+    end)
+  end
+
+  def superset(large, small, eq \\ Fun.Eq) when is_list(large) and is_list(small) do
+    Fun.List.subset?(small, large, eq)
+  end
+
+  def sort(list, ord \\ Fun.Ord) do
+    Enum.sort(list, Fun.Utils.Ord.comparator(ord))
+  end
+
+  def stric_sort(list, ord \\ Fun.Ord) do
+    list |> Fun.List.unique(Fun.Utils.Ord.to_eq(ord)) |> Fun.List.sort(ord)
+  end
 end
 ```
 
@@ -26,7 +192,6 @@ end
 
 ```elixir
 defmodule Fun.Patron do
- 
   defstruct id: nil,
             name: nil,
             age: 0,
@@ -37,6 +202,17 @@ defmodule Fun.Patron do
             likes: [],
             dislikes: []
 
+  defp tier_priority(:vip), do: 3
+  defp tier_priority(:premium), do: 2
+  defp tier_priority(:basic), do: 1
+  defp tier_priority(_), do: 0
+
+  defp get_priority(%__MODULE__{ticket_tier: ticket}) do
+    tier_priority(ticket)
+  end
+  def order_by_ticket_tier do 
+   Fun.Utils.Ord.contramap(&get_priority/1) 
+  end
   def make(name, age, height, opts \\ [])
       when is_bitstring(name) and is_integer(age) and is_integer(height) and age > 0 and
              height > 0 do
@@ -61,13 +237,7 @@ defmodule Fun.Patron do
   end
 end
 
-defimpl Fun.Eq, for: Fun.Patron do 
-  alias Fun.Eq
-  alias Fun.Patron
-  def eq?( %Patron{ id: id1 } , %Patron{ id: id2} ), do: Eq.eq?(id1 , id2)
-  def not_eq?( %Patron{ id: id1 } , %Patron{ id: id2} ), do: Eq.not_eq?(id1 , id2)
-  
-end
+
 
 ```
 
@@ -94,6 +264,12 @@ defmodule Fun.Ride do
 
     }
   end
+  
+  def change(%__MODULE__{} = ride , changes) when is_map(changes) do
+    changes = Map.delete(changes , :id)
+
+    struct( ride, changes) 
+  end
 
 end
 ```
@@ -115,8 +291,177 @@ defmodule Fun.Pass do
       time: time
     }
   end
-  
+    
+  def change(%__MODULE__{} = pass , changes) when is_map(changes) do
+    changes = Map.delete(changes , :id)
+
+    struct( pass, changes) 
+  end
+
+  def get_time( %__MODULE__{ time: time} ) do
+    time
+  end
+
+  def eq_time( ) do 
+    Fun.Utils.contramap(&get_time/1)
+  end
 end
+```
+
+### Protocol implementations
+
+```elixir
+defimpl Fun.Eq, for: Fun.Patron do
+  alias Fun.Eq
+  alias Fun.Patron
+  def eq?(%Patron{id: id1}, %Patron{id: id2}), do: Eq.eq?(id1, id2)
+  def not_eq?(%Patron{id: id1}, %Patron{id: id2}), do: Eq.not_eq?(id1, id2)
+end
+
+# Implement the equiality property for rides
+defimpl Fun.Eq, for: Fun.Ride do
+  alias Fun.Eq
+  alias Fun.Ride
+
+  def eq?(%Ride{id: id1}, %Ride{id: id2}), do: Eq.eq?(id1, id2)
+  def not_eq?(%Ride{id: id1}, %Ride{id: id2}), do: Eq.not_eq?(id1, id2)
+end
+
+defimpl Fun.Eq, for: Fun.Pass do
+  alias Fun.Eq
+  alias Fun.Pass
+
+  def eq?(%Pass{id: id1}, %Pass{id: id2}), do: Eq.eq?(id1, id2)
+  def not_eq?(%Pass{id: id1}, %Pass{id: id2}), do: Eq.not_eq?(id1, id2)
+end
+
+defimpl Fun.Ord, for: Any do
+  def lt?(a, b), do: a < b
+  def le?(a, b), do: a <= b
+  def gt?(a, b), do: a > b
+  def ge?(a, b), do: a >= b
+end
+
+defimpl Fun.Ord, for: Fun.Ride do
+  alias Fun.Ord
+  alias Fun.Ride
+  def lt?(%Ride{name: v1}, %Ride{name: v2}), do: Ord.lt?(v1, v2)
+  def le?(%Ride{name: v1}, %Ride{name: v2}), do: Ord.le?(v1, v2)
+  def gt?(%Ride{name: v1}, %Ride{name: v2}), do: Ord.gt?(v1, v2)
+  def ge?(%Ride{name: v1}, %Ride{name: v2}), do: Ord.ge?(v1, v2)
+end
+
+defimpl Fun.Ord, for: DateTime do
+  def lt?(a, b), do: DateTime.compare(a, b) == :lt
+  def le?(a, b), do: match?(x when x in [:lt, :eq], DateTime.compare(a, b))
+  def gt?(a, b), do: DateTime.compare(a, b) == :gt
+  def ge?(a, b), do: match?(x when x in [:gt, :eq], DateTime.compare(a, b))
+end
+
+defimpl Fun.Ord, for: Fun.Pass do
+  alias Fun.Pass
+
+  def lt?(%Pass{time: t1}, %Pass{time: t2}), do: Fun.Ord.lt?(t1, t2)
+  def le?(%Pass{time: t1}, %Pass{time: t2}), do: Fun.Ord.le?(t1, t2)
+  def gt?(%Pass{time: t1}, %Pass{time: t2}), do: Fun.Ord.gt?(t1, t2)
+  def ge?(%Pass{time: t1}, %Pass{time: t2}), do: Fun.Ord.ge?(t1, t2)
+end
+```
+
+```elixir
+defprotocol Fun.Foldable do
+  def fold_l(structures, transformation_fn, base)
+  def fold_r(structures, transformation_fn, base)
+end
+
+defimpl Fun.Foldable, for: Fun.List do
+  def fold_l(list, acc, fun), do: :lists.foldl(fun, acc, list)
+  def fold_r(list, acc, fun), do: :lists.foldr(fun, acc, list)
+end
+
+defimpl Fun.Foldable, for: List do
+  def fold_l(list, acc, fun), do: :lists.foldl(fun, acc, list)
+  def fold_r(list, acc, fun), do: :lists.foldr(fun, acc, list)
+end
+```
+
+### Playing with Monoids
+
+```elixir
+defprotocol Fun.Monoid do
+  def empty(empty_monoid)
+  def append(monoid_struct_a, monoid_struct_b)
+  def wrap(monoid_struct, value)
+  def unwrap(monoid_struct)
+end
+
+defmodule Fun.Monoid.Sum do
+  defstruct value: 0
+end
+
+defimpl Fun.Monoid, for: Fun.Monoid.Sum do
+  alias Fun.Monoid.Sum
+
+  def empty(_), do: %Sum{}
+  def append(%Sum{value: a}, %Sum{value: b}), do: %Sum{value: a + b}
+  def wrap(%Sum{}, value) when is_number(value), do: %Sum{value: value}
+  def unwrap(%Sum{value: v}) when is_number(v), do: v
+end
+
+defmodule Fun.Monoid.Utils do
+  import Fun.Monoid, only: [empty: 1, append: 2, wrap: 2, unwrap: 1]
+  import Fun.Foldable, only: [fold_l: 3]
+
+  def m_append(monoid, a, b) when is_struct(monoid) do
+    append(wrap(monoid, a), wrap(monoid, b)) |> unwrap()
+  end
+
+  def m_concat(monoid, list) when is_struct(monoid) and is_list(list) do
+    fold_l(list, empty(monoid), fn value, acc -> append(acc, wrap(monoid, value)) end) |> unwrap()
+  end
+end
+```
+
+```elixir
+defmodule Fun.Math do
+  alias Fun.Monoid
+  import Fun.Monoid.Utils
+  def sum(a, b) do
+      m_append( %Monoid.Sum{} , a ,b )
+  end
+
+  def sum( list) when is_list(list) do 
+    m_concat( %Monoid.Sum{} , list)
+  end
+end
+```
+
+```elixir
+# Testing monoid sum
+Fun.Math.sum(1,2)
+```
+
+```elixir
+Fun.Math.sum([])
+```
+
+```elixir
+sum_1 = Fun.Monoid.wrap(%Fun.Monoid.Sum{} , 10)
+
+sum_2 = Fun.Monoid.wrap(%Fun.Monoid.Sum{} , 20)
+
+res = Fun.Monoid.append(sum_1, sum_2)
+Fun.Monoid.unwrap(res)
+```
+
+```elixir
+Fun.Monoid.Utils.m_append( %Fun.Monoid.Sum{} , 10 ,20 )
+```
+
+### Utils
+
+```elixir
+
 ```
 
 ### Testing Things
@@ -131,4 +476,66 @@ alice_b = Fun.Patron.change(alice , %{ ticket_tier: :premium} )
 
 ```elixir
 alice == alice_b
+```
+
+```elixir
+mansion = Fun.Ride.make("Dark Mansion", min_age: 14, tags: [:dark])
+tea = Fun.Ride.make("Tea", min_age: 14, tags: [:happy])
+```
+
+```elixir
+datetime = DateTime.new!( ~D[2025-01-01], ~T[13:00:00])
+```
+
+```elixir
+new_pass = Fun.Pass.make(mansion,datetime)
+otro_pass = Fun.Pass.make(tea, datetime)
+
+Fun.Pass.eq_time.eq?.( new_pass , otro_pass)
+```
+
+```elixir
+alice_a = Fun.Patron.make("Alice", 15, 50)
+alice_b = Fun.Patron.change(  alice_a , %{ticket_tier: :premium} )
+
+ll = [ alice_a , alice_b]
+
+Fun.List.unique(ll)
+```
+
+```elixir
+alice = Fun.Patron.make("Alice", 15, 50, ticket_tier: :premium)
+```
+
+```elixir
+manfred = Fun.Patron.make("manfred", 15, 50, ticket_tier: :basic)
+```
+
+```elixir
+ticket_ord_f = Fun.Patron.order_by_ticket_tier()
+ticket_ord_f.gt?.(manfred , alice )
+```
+
+```elixir
+manfred = Fun.Patron.change( manfred , %{ ticket_tier: :vip})
+```
+
+```elixir
+ticket_ord_f.gt?.(manfred, alice)
+```
+
+```elixir
+Fun.Utils.Ord.compare(10,3)
+```
+
+```elixir
+apple_cart = Fun.Ride.make("Apple Cart")
+manfred_ride = Fun.Ride.make("Manfred Ride")
+Fun.Utils.Ord.compare(apple_cart, manfred_ride)
+```
+
+```elixir
+l = [:banana , :pan, :arepa]
+
+Fun.List.stric_sort(l)
 ```
