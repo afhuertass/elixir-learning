@@ -1,0 +1,679 @@
+# NetCDF
+
+```elixir
+Mix.install(
+  [
+    {:netcdf, path: "/home/andresh/maps/elixir/netcdf"},
+    {:rustler, ">= 0.0.0", optional: true},
+    {:angle, "~> 1.0"},
+    {:kino_maplibre, "~> 0.1.12"},
+    {:kino_vega_lite, "~> 0.1.11"},
+    {:nx, "~> 0.10.0"},
+    {:exla, "~> 0.10.0"},
+    {:req, "~> 0.5.15"}
+  ],
+  config: [nx: [default_backend: EXLA.Backend]]
+)
+```
+
+## Sectionww
+
+```elixir
+Nx.global_default_backend(EXLA.Backend)
+```
+
+```elixir
+defmodule GeoConversion do
+  # --- Constants (WGS84 Geoid Parameters) ---
+  # Height of the satellite from the center of the Earth (km)
+  @h 42164.537
+  # Equatorial radius (km)
+  @r_eq 6378.137
+  # Polar radius (km)
+  @r_p 6356.752314
+
+  def s5() do
+    
+    square = fn n -> :math.pow(n, 2) end
+
+    # Derived constants based on the Python script's s_4 and s_5
+    s_4 = square.(@r_eq) / square.(@r_p)
+    s_5 = square.(@h) - square.(@r_eq)
+
+    {s_4, s_5}
+  end
+  @doc """
+  Calculates geodetic latitude and longitude in degrees from geostationary
+  x and y coordinates (radians).
+
+  This implements the Inverse Geostationary Projection (e.g., Meteosat/GOES).
+
+  Returns:
+    A tuple {latitude, longitude} in degrees, or {Float.nan, Float.nan} if 
+    the point is off-disk (i.e., the square root argument is negative).
+
+  Source: https://gitlab.eumetsat.int/eumetlab/data-services/eumdac_data_store/-/blob/master/1_6_MTG_LI_data_access.ipynb
+  """
+  @spec calculate_lat_lon(number(), number()) :: {number(), number()}
+  def calculate_lat_lon(x, y) when is_number(x) and is_number(y) do
+    # Helper function for squaring
+    square = fn n -> :math.pow(n, 2) end
+
+    # Derived constants based on the Python script's s_4 and s_5
+    s_4 = square.(@r_eq) / square.(@r_p)
+    s_5 = square.(@h) - square.(@r_eq)
+
+    # --- Pre-calculate trigonometric values and the discriminant ---
+    cos_y = :math.cos(y)
+    sin_y = :math.sin(y)
+    cos_x = :math.cos(x)
+
+    # Calculate the discriminant (the value inside the square root)
+    term_a = square.(@h * cos_x * cos_y)
+    term_b = (square.(cos_y) + s_4 * square.(sin_y)) * s_5
+    discriminant = term_a - term_b
+
+    # Check for invalid value (off-disk) - equivalent to Python's numpy error suppression
+    if discriminant < 0.0 do
+      {0, 0}
+    else
+      # Calculate s_d
+      s_d = :math.sqrt(discriminant)
+
+      # Remaining steps
+      denominator = square.(cos_y) + s_4 * square.(sin_y)
+
+      # Edge case check
+      if denominator == 0.0 do
+        {0, 0}
+      else
+        sn = (@h * cos_x * cos_y - s_d) / denominator
+
+        s1 = @h - sn * cos_x * cos_y
+        s2 = -sn * :math.sin(x) * cos_y
+        s3 = sn * sin_y
+
+        # Calculate latitude and longitude in radians
+        lat_rad = :math.atan(s_4 * s3 / :math.sqrt(square.(s1) + square.(s2)))
+        lon_rad = :math.atan(s2 / s1)
+
+        # Convert final results to degrees (Equivalent to np.degrees)
+        lat_degree = lat_rad * 180 / :math.pi()
+        lon_degree = lon_rad * 180 / :math.pi()
+        {lat_degree, lon_degree}
+      end
+    end
+  end
+
+  # gets a list of optical thickness values
+  def process_optical_thickness(x, y, vals, remove_val = 0) do
+    # rem
+    res =
+      [
+        x,
+        y,
+        vals
+      ]
+      |> Enum.zip_with(fn [x, y, val] ->
+        {lat, lon} = GeoConversion.calculate_lat_lon(x, y)
+        [lat, lon, val]
+      end)
+      |> Enum.filter(fn [x, y, val] -> val != remove_val and (x != 0 and y != 0 ) end) 
+      |> Enum.map(fn [_,_,v] -> v end)
+    res
+  end
+
+
+end
+```
+
+```elixir
+GeoConversion.s5()
+```
+
+```elixir
+defmodule GeoConversionTensor do
+  # --- Constants (WGS84 Geoid Parameters) ---
+  # Height of the satellite from the center of the Earth (km)
+  @h 42164.537
+  # Equatorial radius (km)
+  @r_eq 6378.137
+  # Polar radius (km)
+  @r_p 6356.752314
+  import Nx.Defn
+
+  defn geo_convert(x, y) do
+    # Derived constants based on the Python script's s_4 and s_5
+    s_4 = (@r_eq * @r_eq) / (@r_p * @r_p)
+
+    s_5 = (@h * @h) - (@r_eq * @r_eq)
+    cos_y = Nx.cos(y)
+    sin_y = Nx.sin(y)
+    cos_x = Nx.cos(x)
+
+    term_a = Nx.pow(@h * cos_x * cos_y, 2)
+    term_b = (Nx.pow(cos_y, 2) + s_4 * Nx.pow(sin_y, 2)) * s_5
+    discriminant = term_a - term_b
+
+    s_d = Nx.sqrt(discriminant)
+
+    denominator = Nx.pow(cos_y, 2) + s_4 * Nx.pow(sin_y, 2)
+    sn = (@h * (cos_x * cos_y) - s_d) / denominator
+    s1 = @h - sn * cos_x * cos_y
+    s2 = -sn * Nx.sin(x) * cos_y
+    s3 = sn * sin_y
+
+    # Calculate latitude and longitude in radians
+    lat_rad = Nx.atan(s_4 * s3 / Nx.sqrt(Nx.pow(s1, 2) + Nx.pow(s2, 2)))
+    lon_rad = Nx.atan(s2 / s1)
+
+    # Convert final results to degrees (Equivalent to np.degrees)
+    pi = Nx.Constants.pi()
+    lat_degree = lat_rad * 180 / pi
+    lon_degree = lon_rad * 180 / pi
+    {lat_degree, lon_degree}
+  end
+end
+```
+
+```elixir
+Nx.Constants.pi()
+```
+
+```elixir
+
+
+{:ok, cloud_file} = NetCDF.File.open("/home/andresh/maps/data/clouds/verga.nc")
+{:ok, file} = NetCDF.File.open("/home/andresh/maps/data/23oct/radiance.nc")
+
+
+{:ok, cloud2} = NetCDF.File.open("/home/andresh/maps/data/04nov/another.nc")
+cloud2
+
+```
+
+```elixir
+NetCDF.Variable.load(cloud2, "cloud_state")
+```
+
+```elixir
+NetCDF.Variable.load(cloud_file, "retrieved_cloud_phase")
+```
+
+```elixir
+{:ok, xvar} = NetCDF.Variable.load(cloud_file, "x")
+{:ok, yvar} = NetCDF.Variable.load(cloud_file, "y")
+{:ok, vals} = NetCDF.Variable.load(cloud_file, "retrieved_cloud_phase")
+
+a = GeoConversion.process_optical_thickness(xvar.value, yvar.value, vals.value, 0)
+
+length(xvar.value)
+```
+
+```elixir
+vals_tensor = Nx.tensor( vals.value )
+vals_tensor = vals_tensor |> Nx.reshape( { length(xvar.value) , length(yvar.value) } )
+```
+
+```elixir
+xtensor = Nx.tensor(xvar.value)
+ytensor = Nx.tensor(yvar.value)
+
+xrow = Nx.new_axis(xtensor , 0)
+ycol = Nx.new_axis(ytensor , 1 )
+
+shape = {Nx.size(xrow) , Nx.size(ycol)}
+
+xgrid = Nx.broadcast(xrow , shape )
+ygrid = Nx.broadcast(ycol , shape)
+
+```
+
+```elixir
+{lat, lon} = GeoConversionTensor.geo_convert(xgrid, ygrid)
+
+mask =  Nx.is_nan(lat)
+
+lat = Nx.select(mask , Nx.tensor(0.0) , lat)
+
+lon = Nx.select(mask , Nx.tensor(0.0) , lon)
+Nx.sum(mask)
+#1737167548
+
+lat_list = Nx.to_flat_list(lat)
+lon_list = Nx.to_flat_list(lon)
+
+```
+
+```elixir
+length(vals.value)
+
+res =
+  [lat_list, lon_list, vals.value]
+  |> Enum.zip_with(fn [x, y, val] -> [x, y, val] end)
+  |> Enum.filter(fn [x, y, val] -> (x != 0 or y != 0) end)
+
+res
+```
+
+```elixir
+res
+```
+
+```elixir
+defmodule GeoParser do
+  def parse_to_geojson(data) do
+    features =
+      data
+      |> Enum.map(fn {{x, y}, val} ->
+        %{
+          type: "Feature",
+          geometry: %{
+            type: "Point",
+            coordinates: [x, y]
+          },
+          properties: %{light: :math.log(val)}
+        }
+      end)
+
+    %{type: "FeatureCollection", features: features}
+  end
+
+  def parse_list_geojson(data) do
+    features =
+      data
+      |> Enum.map(fn [x, y, v] ->
+        %{
+          type: "Feature",
+          geometry: %{
+            type: "Point",
+            coordinates: [x, y]
+          },
+          properties: %{cloud_phase: v}
+        }
+      end)
+
+    %{type: "FeatureCollection", features: features}
+  end
+
+  def paint() do
+    %{
+      "heatmap-weight": [
+        "interpolate",
+        ["linear"],
+        ["get", "cloud_phase"],
+        0,
+        "blue",
+        0.56,
+        "cyan",
+        1.13,
+        "green",
+        1.69,
+        "yellow",
+        2.25,
+        "red"
+      ],
+      "heatmap-intensity": [
+        "interpolate",
+        ["linear"],
+        ["zoom"],
+        0,
+        1,
+        9,
+        3
+      ],
+      "heatmap-color": [
+        "interpolate",
+        ["linear"],
+        ["heatmap-density"],
+        1,
+        "rgba(0,0,255,0)",
+        2,
+        "rgb(0,255,255)",
+        3,
+        "rgb(0,255,0)"
+      ],
+      "heatmap-radius": [
+        "interpolate",
+        ["linear"],
+        ["zoom"],
+        0,
+        2,
+        9,
+        20
+      ],
+      "heatmap-opacity": [
+        "interpolate",
+        ["linear"],
+        ["zoom"],
+        7,
+        1,
+        9,
+        0
+      ]
+    }
+  end
+
+  def paint2(speed_field) do
+    %{
+      "heatmap-weight": [
+        "interpolate",
+        ["linear"],
+        ["get", speed_field],
+        1,
+        0.5,
+        3,
+        3
+      ],
+      "heatmap-intensity": [
+        "interpolate",
+        ["linear"],
+        ["zoom"],
+        0,
+        0.5,
+        9,
+        2
+      ],
+      "heatmap-color": [
+        "interpolate",
+        ["linear"],
+        ["heatmap-density"],
+        0,
+        "rgba(0, 0, 255, 0)",
+        0.3,
+        "#1D4ED8",
+        0.6,
+        "#06B6D4",
+        1,
+        "#10B981",
+        3,
+        "rgba(255,0,0,1)"
+      ],
+      "heatmap-radius": [
+        "interpolate",
+        ["linear"],
+        ["zoom"],
+        0,
+        2,
+        9,
+        20
+      ],
+      "heatmap-opacity": [
+        "interpolate",
+        ["linear"],
+        ["zoom"],
+        7,
+        1,
+        9,
+        0
+      ]
+    }
+  end
+end
+```
+
+```elixir
+#geofeatures = GeoParser.parse_to_geojson(coord_val)
+geofeatures = GeoParser.parse_list_geojson(res)
+```
+
+```elixir
+map =
+  MapLibre.new(
+    style: "https://demotiles.maplibre.org/globe.json",
+    zoom: 10
+  )
+
+map
+|> MapLibre.add_source("test",
+  type: :geojson,
+  data: geofeatures
+)
+|> MapLibre.add_layer(
+  id: "luz",
+  type: :heatmap,
+  source: "test",
+  paint: GeoParser.paint2("cloud_phase")
+)
+```
+
+```elixir
+new_grid = res |> Enum.map(fn [x, y, z] -> %{"lat" => x, "lon" => y, "value" => z} end)
+```
+
+```elixir
+data_grid = [
+  %{"lon" => 0, "lat" => 51, "value" => 3, "id" => "A"},
+  %{"lon" => -118, "lat" => 34, "value" => 2, "id" => "B"},
+  %{"lon" => 100, "lat" => 15, "value" => 1, "id" => "C"},
+  %{"lon" => -46, "lat" => -23, "value" => 0, "id" => "D"},
+  %{"lon" => 140, "lat" => -30, "value" => 3, "id" => "E"},
+  %{"lon" => 30, "lat" => 30, "value" => 2, "id" => "F"},
+  %{"lon" => -80, "lat" => 40, "value" => 1, "id" => "G"},
+  %{"lon" => 10, "lat" => 60, "value" => 0, "id" => "H"},
+  %{"lon" => 120, "lat" => 40, "value" => 3, "id" => "I"},
+  %{"lon" => -70, "lat" => -35, "value" => 2, "id" => "J"},
+  %{"lon" => -15, "lat" => 10, "value" => 1, "id" => "K"},
+  %{"lon" => 95, "lat" => 5, "value" => 2, "id" => "L"},
+  %{"lon" => 40, "lat" => -5, "value" => 3, "id" => "M"}
+]
+
+# --- Layer 1: Base World Map ---
+base_map =
+  VegaLite.new(
+    data: [
+      # Data is loaded from a URL and formatted as topojson
+      url: "https://cdn.jsdelivr.net/npm/world-atlas@2.0.2/countries-50m.json",
+      format: [type: :topojson, feature: "countries"]
+    ]
+  )
+  |> VegaLite.projection(type: :naturalearth1)
+  # Mark is set to geoshape with light gray fill
+  |> VegaLite.mark(:geoshape, fill: "#E5E7EB", stroke: "#FFFFFF", stroke_width: 0.5)
+
+# --- Layer 2: Smooth Heatmap Marks ---
+heatmap_layer =
+  VegaLite.new(data: [values: new_grid])
+  |> VegaLite.projection(type: :naturalearth1)
+  # Critical settings for smooth heatmap simulation: large size and low opacity
+  |> VegaLite.mark(:circle, opacity: 0.3, stroke: nil, size: 10, blend: "softlight")
+  |> VegaLite.encode(
+    :longitude,
+    field: "lon",
+    type: :quantitative
+  )
+  |> VegaLite.encode(
+    :latitude,
+    field: "lat",
+    type: :quantitative
+  )
+  |> VegaLite.encode(:color,
+    field: "value",
+    type: :quantitative,
+    title: "Value",
+    scale: [domain: [0, 4], scheme: "plasma"]
+  )
+  |> VegaLite.encode(
+    :opacity, [
+    condition: %{
+      test: "datum.value === 0",
+      value: 0
+    },
+    field: "value",
+    type: :quantitative,
+    scale: %{
+      domain: [0, 4],
+      range: [0.2, 1]
+    }
+    ]
+  )
+
+heatmap_layer
+```
+
+```elixir
+
+
+# --- Final Specification: Layering and Configuration ---
+VegaLite.new(
+  title: "Global Grid Value Distribution (Smooth Interpolation)",
+  # Set a reasonable fixed width/height for display in environments like Livebook
+  width: 600, 
+  height: 400
+)
+|> VegaLite.layers([base_map, heatmap_layer])
+|> VegaLite.config(
+  view: [stroke: nil],
+  axis: [grid: false]
+)
+```
+
+```elixir
+VegaLite.new()
+|> VegaLite.data_from_values(new_grid, only: ["lat", "lon"])
+|> VegaLite.mark(:point)
+|> VegaLite.encode_field(:x, "lat", type: :quantitative)
+|> VegaLite.encode_field(:y, "lon", type: :quantitative)
+```
+
+```elixir
+vega_spec = %{
+  "$schema" => "https://vega.github.io/schema/vega/v5.json",
+  "width" => 500,
+  "height" => 400,
+  "padding" => 5,
+  "title" => "Raw Vega: Horsepower vs. MPG",
+
+  # Data source definition
+  "data" => [
+    %{
+      "name" => "source",
+      "url" => "https://raw.githubusercontent.com/vega/vega-datasets/master/data/cars.json"
+    }
+  ],
+
+  # Scale definitions
+  "scales" => [
+    %{
+      "name" => "x",
+      "type" => "linear",
+      "round" => true,
+      "nice" => true,
+      "domain" => %{"data" => "source", "field" => "Horsepower"},
+      "range" => "width"
+    },
+    %{
+      "name" => "y",
+      "type" => "linear",
+      "round" => true,
+      "nice" => true,
+      "domain" => %{"data" => "source", "field" => "Miles_per_Gallon"},
+      "range" => "height",
+      "reverse" => true # Flip Y-axis to match standard charts
+    }
+  ],
+
+  # Axis definitions
+  "axes" => [
+    %{"orient" => "bottom", "scale" => "x", "title" => "Horsepower"},
+    %{"orient" => "left", "scale" => "y", "title" => "Miles per Gallon"}
+  ],
+
+  # Mark definitions (Scatter Plot Points)
+  "marks" => [
+    %{
+      "type" => "symbol",
+      "from" => %{"data" => "source"},
+      "encode" => %{
+        "update" => %{
+          "x" => %{"scale" => "x", "field" => "Horsepower"},
+          "y" => %{"scale" => "y", "field" => "Miles_per_Gallon"},
+          "shape" => %{"value" => "circle"},
+          "size" => %{"value" => 80},
+          "fill" => %{"value" => "purple"},
+          "fillOpacity" => %{"value" => 0.6},
+          "stroke" => %{"value" => "black"},
+          "strokeWidth" => %{"value" => 0.5}
+        }
+      }
+    }
+  ]
+}
+
+# 2. Show the Vega spec, explicitly setting the mode to "vega"
+VegaLite.new(vega_spec)
+```
+
+```elixir
+spec2 = %{
+  "$schema"=> "https=>//vega.github.io/schema/vega/v6.json",
+  "description"=> "A contour plot of the Maungawhau volcano in New Zealand.",
+  "width"=> 960,
+  "beight" => 960,
+  "autosize"=> "none",
+
+  "signals"=> [
+    %{
+      "name"=> "grid",
+      "init"=> "data('volcano')[0]"
+    },
+    %{
+      "name"=> "height",
+      "update"=> "round(grid.height * width / grid.width)"
+    },
+    %{
+      "name"=> "smooth", "value"=> true,
+      "bind"=> %{"input"=> "radio", "options"=> [true, false]}
+    }
+  ],
+
+  "data"=> [
+    %{
+      "name"=> "volcano",
+      "url"=> "https://raw.githubusercontent.com/vega/vega-datasets/master/data/volcano.json"
+    },
+    %{
+      "name"=> "contours",
+      "source"=> "volcano",
+      "transform"=> [
+        %{
+          "type"=> "isocontour",
+          "scale"=> %{"expr"=> "width / datum.width"},
+          "smooth"=> %{"signal"=> "smooth"},
+          "thresholds"=> %{"signal"=> "sequence(90, 195, 5)"}
+        }
+      ]
+    }
+  ],
+
+  "scales"=> [
+    %{
+      "name"=> "color",
+      "type"=> "linear",
+      "domain"=> [90, 190],
+      "range"=> %{"scheme"=> "blueorange"}
+    }
+  ],
+
+  "marks"=> [
+    %{
+      "type"=> "path",
+      "from"=> %{"data"=> "contours"},
+      "encode"=> %{
+        "enter"=> %{
+          "stroke"=> %{"value"=> "#ccc"},
+          "strokeWidth"=> %{"value"=> 1},
+          "fill"=> %{"scale"=> "color", "field"=> "contour.value"}
+        }
+      },
+      "transform"=> [
+        %{
+          "type"=> "geopath",
+          "field"=> "datum.contour"
+        }
+      ]
+    }
+  ]
+}
+VegaLite.new(spec2)
+```

@@ -445,6 +445,48 @@ Fun.Math.sum(1,2)
 Fun.Math.sum([])
 ```
 
+### Combine Equality
+
+Implementing combine equality
+
+```elixir
+defmodule Fun.Monoid.Eq.All do 
+  defstruct eq?: &Fun.Monoid.Eq.All.default_eq?/2, 
+   not_eq?: &Fun.Monoid.Eq.All.default_not_eq?/2
+  def default_eq?(_ , _), do: true
+  def defaul_not_eq?(_,_), do: false
+end
+
+
+defimpl Fun.Monoid, for: Fun.Monoid.Eq.All do
+  alias Fun.Monoid.Eq.All
+  alias Fun.Utils
+  def empty(_) do 
+    %All{}
+  end
+
+  def append( %All{} = eq1, %All{} = eq2  ) do 
+   %All{
+     eq?: fn a,b -> eq1.eq?.(a,b) && eq2.eq?.(a,b) end, 
+       not_eq?: fn a,b -> eq1.not_eq?.(a,b) || eq2.not_eq?.(a,b) end
+   }
+  end
+
+  def wrap( %All{}, eq ) do 
+   eq = Utils.to_eq_map(eq) 
+    %All{
+      eq?: eq.eq? , 
+      not_eq?: eq.not_eq?
+    }
+  end
+
+  def unwrap( %All{} = m ) do 
+    %{ eq: m.eq? , not_eq: m.not_eq? }
+    
+  end
+end
+```
+
 ```elixir
 sum_1 = Fun.Monoid.wrap(%Fun.Monoid.Sum{} , 10)
 

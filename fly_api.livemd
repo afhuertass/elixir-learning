@@ -29,4 +29,4 @@ end
 AeroAPI.fetch_departured("HEL")
 ```
 
-<!-- livebook:{"offset":506,"stamp":{"token":"XCP.Qb-U5pBc4xylAAXQl95rJGzKwjQBJZbStGyct3Dt8S5rHHdPvdAEAQd_zD-YEXJC1UMW69MGuWpBhO-oKKTV-S8wp3n0zVHwjoZb2vFeAA","version":2}} -->
+<!-- livebook:{"offset":506,"stamp":{"token":"XCP.lMOBzhLk7p0F3VZ7cHx1HeWf7VtrIeqCjgPCIBGbwnhLW80UC8Mqg4wJKUbjGI4CfPo4IAsV-BDsefLvMFqCSKQO51rO1RvkDkqA12DQGg","version":2}} -->

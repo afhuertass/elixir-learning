@@ -124,6 +124,75 @@ end
 ```
 
 ```elixir
+vega_spec = %{
+  "$schema" => "https://vega.github.io/schema/vega/v5.json",
+  "width" => 500,
+  "height" => 400,
+  "padding" => 5,
+  "title" => "Raw Vega: Horsepower vs. MPG",
+
+  # Data source definition
+  "data" => [
+    %{
+      "name" => "source",
+      "url" => "https://raw.githubusercontent.com/vega/vega-datasets/master/data/cars.json"
+    }
+  ],
+
+  # Scale definitions
+  "scales" => [
+    %{
+      "name" => "x",
+      "type" => "linear",
+      "round" => true,
+      "nice" => true,
+      "domain" => %{"data" => "source", "field" => "Horsepower"},
+      "range" => "width"
+    },
+    %{
+      "name" => "y",
+      "type" => "linear",
+      "round" => true,
+      "nice" => true,
+      "domain" => %{"data" => "source", "field" => "Miles_per_Gallon"},
+      "range" => "height",
+      "reverse" => true # Flip Y-axis to match standard charts
+    }
+  ],
+
+  # Axis definitions
+  "axes" => [
+    %{"orient" => "bottom", "scale" => "x", "title" => "Horsepower"},
+    %{"orient" => "left", "scale" => "y", "title" => "Miles per Gallon"}
+  ],
+
+  # Mark definitions (Scatter Plot Points)
+  "marks" => [
+    %{
+      "type" => "symbol",
+      "from" => %{"data" => "source"},
+      "encode" => %{
+        "update" => %{
+          "x" => %{"scale" => "x", "field" => "Horsepower"},
+          "y" => %{"scale" => "y", "field" => "Miles_per_Gallon"},
+          "shape" => %{"value" => "circle"},
+          "size" => %{"value" => 80},
+          "fill" => %{"value" => "purple"},
+          "fillOpacity" => %{"value" => 0.6},
+          "stroke" => %{"value" => "black"},
+          "strokeWidth" => %{"value" => 0.5}
+        }
+      }
+    }
+  ]
+}
+
+# 2. Show the Vega spec, explicitly setting the mode to "vega"
+VegaLite.new(vega_spec)
+
+```
+
+```elixir
 #data = GeoFi.get_population("2023")
 ```
 
